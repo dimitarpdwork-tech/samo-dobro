@@ -1,0 +1,604 @@
+#!/usr/bin/env python3
+"""
+Static site builder for the good-news sites.
+
+Reads config.json + content/articles/**/*.json and generates a complete,
+SEO-optimized static site into dist/:
+
+  /                       home (hero + latest, paginated)
+  /page/N/                older pages
+  /c/<category>/          category archives (paginated)
+  /<prefix>/<slug>/       article pages (NewsArticle structured data)
+  /<about>/               about + editorial policy + AI disclosure
+  /feed.xml  /sitemap.xml  /robots.txt  /404.html
+  /assets/                stylesheet, favicons, social image
+
+Run:  python build.py
+"""
+
+import hashlib
+import html
+import json
+import shutil
+from datetime import datetime, timezone
+from email.utils import format_datetime
+from pathlib import Path
+from string import Template
+
+ROOT = Path(__file__).resolve().parent
+CONTENT = ROOT / "content" / "articles"
+ASSETS_SRC = ROOT / "assets"
+DIST = ROOT / "dist"
+PAGE_SIZE = 12
+
+esc = html.escape
+
+BG_MONTHS = ["януари", "февруари", "март", "април", "май", "юни", "юли",
+             "август", "септември", "октомври", "ноември", "декември"]
+BG_DAYS = ["понеделник", "вторник", "сряда", "четвъртък", "петък", "събота", "неделя"]
+EN_MONTHS = ["January", "February", "March", "April", "May", "June", "July",
+             "August", "September", "October", "November", "December"]
+EN_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+# ---------------------------------------------------------------- data ----
+
+def load_config() -> dict:
+    with open(ROOT / "config.json", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def load_articles(cfg) -> list[dict]:
+    articles = []
+    if CONTENT.exists():
+        for path in CONTENT.rglob("*.json"):
+            with open(path, encoding="utf-8") as f:
+                a = json.load(f)
+            if a.get("category") not in cfg["categories"]:
+                a["category"] = next(iter(cfg["categories"]))
+            a["_dt"] = datetime.strptime(a["published"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            articles.append(a)
+    articles.sort(key=lambda a: a["_dt"], reverse=True)
+    return articles
+
+
+def fmt_date(dt: datetime, lang: str) -> str:
+    if lang == "bg":
+        return f"{dt.day} {BG_MONTHS[dt.month - 1]} {dt.year} г."
+    return f"{EN_MONTHS[dt.month - 1]} {dt.day}, {dt.year}"
+
+
+def fmt_today(lang: str) -> str:
+    now = datetime.now(timezone.utc)
+    if lang == "bg":
+        return f"{BG_DAYS[now.weekday()]}, {now.day} {BG_MONTHS[now.month - 1]} {now.year}"
+    return f"{EN_DAYS[now.weekday()]}, {EN_MONTHS[now.month - 1]} {now.day}, {now.year}"
+
+
+def reading_time(body: str) -> int:
+    return max(1, round(len(body.split()) / 180))
+
+
+def hnum(seed: str, lo: int, hi: int, salt: str = "") -> int:
+    h = int(hashlib.sha1((seed + salt).encode()).hexdigest()[:8], 16)
+    return lo + h % (hi - lo + 1)
+
+
+# ---------------------------------------------------------------- css -----
+
+CSS = Template("""
+:root{--bg:${bg};--ink:${ink};--muted:${muted};--card:${card};--line:${line};
+--p:${primary};--pd:${primary_deep};--s:${secondary};--t:${tertiary};--glow:${hero_glow};
+--fd:${font_display};--fb:${font_body};--fl:${font_label};--r:18px;--maxw:1128px}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--fb);
+font-size:16.5px;line-height:1.55;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}img,svg{max-width:100%}
+:focus-visible{outline:3px solid var(--p);outline-offset:2px;border-radius:6px}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 22px}
+
+/* masthead */
+.masthead{padding:26px 0 10px}
+.mast-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.mark{flex:0 0 auto;display:grid;place-items:center}
+.brand h1,.brand .h1{font-family:var(--fd);font-weight:800;font-size:1.9rem;margin:0;letter-spacing:-.02em;line-height:1}
+.brand p{margin:3px 0 0;color:var(--muted);font-size:.95rem}
+.today{margin-left:auto;font-family:var(--fl);text-transform:uppercase;letter-spacing:.14em;
+font-size:.72rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;
+padding:7px 14px;background:var(--card)}
+nav.cats{display:flex;gap:8px;overflow-x:auto;padding:16px 0 6px;scrollbar-width:none}
+nav.cats::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;font-family:var(--fl);font-size:.83rem;font-weight:700;letter-spacing:.04em;
+padding:7px 14px;border-radius:999px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);
+transition:transform .15s,border-color .15s}
+.chip:hover{border-color:var(--p);transform:translateY(-1px)}
+.chip.on{background:var(--ink);border-color:var(--ink);color:var(--card)}
+
+/* hero */
+.hero{position:relative;overflow:hidden;border-radius:26px;margin:14px 0 30px;
+background:var(--card);border:1px solid var(--line)}
+.hero-inner{position:relative;z-index:2;padding:42px 44px;max-width:640px}
+.kicker{display:inline-flex;align-items:center;gap:8px;font-family:var(--fl);font-weight:700;
+text-transform:uppercase;letter-spacing:.16em;font-size:.72rem;color:var(--pd);margin-bottom:14px}
+.kicker .dot{width:9px;height:9px;border-radius:50%;background:var(--p);box-shadow:0 0 0 4px color-mix(in srgb,var(--p) 25%,transparent)}
+.hero h2{font-family:var(--fd);font-weight:800;font-size:clamp(1.7rem,4vw,2.7rem);
+line-height:1.12;margin:0 0 14px;letter-spacing:-.02em}
+.hero p.teaser{font-size:1.08rem;color:var(--muted);margin:0 0 20px;max-width:52ch}
+.btn{display:inline-block;font-family:var(--fl);font-weight:700;font-size:.95rem;
+background:var(--p);color:var(--ink);padding:12px 22px;border-radius:999px;
+box-shadow:0 6px 16px color-mix(in srgb,var(--p) 45%,transparent);transition:transform .15s,box-shadow .15s}
+.btn:hover{transform:translateY(-2px);box-shadow:0 10px 22px color-mix(in srgb,var(--p) 55%,transparent)}
+.hero-art{position:absolute;inset:0;z-index:1;pointer-events:none}
+.meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap;color:var(--muted);
+font-family:var(--fl);font-size:.8rem;letter-spacing:.03em}
+.meta .cat{font-weight:700;color:var(--pd)}
+
+/* section title */
+.sec{display:flex;align-items:baseline;gap:14px;margin:6px 0 18px}
+.sec h2{font-family:var(--fd);font-weight:800;font-size:1.35rem;margin:0;letter-spacing:-.01em}
+.sec .rule{flex:1;height:5px;border-radius:99px;background:linear-gradient(90deg,var(--p),var(--glow) 55%,transparent)}
+body.brand-globe .sec .rule{height:2px;background:linear-gradient(90deg,var(--t) 0 64px,var(--line) 64px);position:relative}
+
+/* grid + cards */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(292px,1fr));gap:22px;margin-bottom:34px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;
+display:flex;flex-direction:column;transition:transform .18s,box-shadow .18s}
+.card:hover{transform:translateY(-4px);box-shadow:0 14px 30px rgba(20,40,60,.10)}
+.card .thumb{display:block;line-height:0}
+.cbody{padding:16px 18px 18px;display:flex;flex-direction:column;gap:9px;flex:1}
+.cbody h3{font-family:var(--fd);font-weight:800;font-size:1.13rem;line-height:1.28;margin:0;letter-spacing:-.01em}
+.cbody p{margin:0;color:var(--muted);font-size:.94rem}
+.cbody .meta{margin-top:auto;padding-top:6px}
+
+/* article */
+.article{max-width:720px;margin:10px auto 40px}
+.article h1{font-family:var(--fd);font-weight:800;font-size:clamp(1.7rem,4.4vw,2.55rem);
+line-height:1.14;letter-spacing:-.02em;margin:10px 0 14px}
+.article .banner{border-radius:var(--r);overflow:hidden;margin:20px 0;line-height:0;border:1px solid var(--line)}
+.article .body p{font-size:1.07rem;line-height:1.75;margin:0 0 1.2em}
+.tags{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}
+.tag{font-family:var(--fl);font-size:.78rem;font-weight:700;color:var(--pd);
+background:color-mix(in srgb,var(--p) 14%,var(--card));border-radius:999px;padding:5px 12px}
+.srcbox{border-left:4px solid var(--p);background:var(--card);border-radius:0 var(--r) var(--r) 0;
+padding:14px 18px;margin:24px 0;border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.srcbox a{font-weight:700;color:var(--pd);text-decoration:underline;text-underline-offset:3px}
+.ainote{color:var(--muted);font-size:.85rem;font-style:italic;margin:10px 0 0}
+.backlink{display:inline-block;margin:8px 0 22px;font-family:var(--fl);font-weight:700;color:var(--pd)}
+
+/* pagination + footer */
+.pager{display:flex;justify-content:center;gap:12px;margin:8px 0 40px;font-family:var(--fl);font-weight:700}
+.pager a,.pager span{padding:9px 18px;border-radius:999px;border:1.5px solid var(--line);background:var(--card)}
+.pager a:hover{border-color:var(--p)}
+.pager .cur{background:var(--ink);color:var(--card);border-color:var(--ink)}
+footer{border-top:1px solid var(--line);margin-top:20px;padding:30px 0 40px;background:var(--card)}
+footer .mission{max-width:56ch;color:var(--muted);margin:8px 0 16px}
+footer .fnav{display:flex;gap:18px;flex-wrap:wrap;font-family:var(--fl);font-weight:700;font-size:.9rem}
+footer .fine{color:var(--muted);font-size:.8rem;margin-top:18px}
+.about{max-width:720px;margin:10px auto 44px}
+.about h1{font-family:var(--fd);font-weight:800;font-size:2.1rem;letter-spacing:-.02em}
+.about h2{font-family:var(--fd);font-weight:800;font-size:1.25rem;margin:26px 0 8px}
+.about p{color:var(--ink);line-height:1.7}
+.nf{text-align:center;padding:70px 0}
+.nf .big{font-size:4rem}
+
+@media (max-width:700px){
+ .hero-inner{padding:30px 24px;max-width:100%}
+ .hero-art svg.side{opacity:.35}
+ .today{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+ *{transition:none!important;animation:none!important}html{scroll-behavior:auto}
+}
+""")
+
+
+# ------------------------------------------------------------- svg art ----
+
+def mark_svg(cfg) -> str:
+    c = cfg["colors"]
+    if cfg["brand"] == "sun":
+        rays = "".join(
+            f'<rect x="22.6" y="1" width="2.8" height="8" rx="1.4" fill="{c["primary_deep"]}" transform="rotate({a} 24 24)"/>'
+            for a in range(0, 360, 45))
+        return (f'<svg class="mark" width="46" height="46" viewBox="0 0 48 48" aria-hidden="true">'
+                f'<circle cx="24" cy="24" r="11.5" fill="{c["primary"]}"/>'
+                f'<circle cx="24" cy="24" r="11.5" fill="none" stroke="{c["primary_deep"]}" stroke-width="1.6"/>{rays}</svg>')
+    return (f'<svg class="mark" width="46" height="46" viewBox="0 0 48 48" aria-hidden="true">'
+            f'<circle cx="24" cy="24" r="17" fill="none" stroke="{c["ink"]}" stroke-width="2.6"/>'
+            f'<path d="M7 24h34M24 7c-7 8-7 26 0 34M24 7c7 8 7 26 0 34" fill="none" stroke="{c["ink"]}" stroke-width="1.8" opacity=".65"/>'
+            f'<circle cx="38.5" cy="11" r="4.5" fill="{c["tertiary"]}"/></svg>')
+
+
+def hero_art(cfg) -> str:
+    c = cfg["colors"]
+    if cfg["brand"] == "sun":
+        rays = "".join(
+            f'<rect x="-7" y="-150" width="14" height="52" rx="7" fill="{c["primary"]}" opacity=".85" transform="rotate({a})"/>'
+            for a in range(0, 360, 30))
+        return (
+            '<div class="hero-art">'
+            f'<div style="position:absolute;inset:0;background:'
+            f'radial-gradient(620px 420px at 86% 118%,{c["hero_glow"]} 0%,{c["primary"]}55 34%,transparent 68%)"></div>'
+            f'<svg class="side" style="position:absolute;right:-40px;bottom:-70px" width="380" height="380" viewBox="-190 -190 380 380" aria-hidden="true">'
+            f'<g>{rays}</g><circle r="86" fill="{c["primary"]}"/><circle r="86" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="3"/></svg></div>')
+    return (
+        '<div class="hero-art">'
+        f'<svg preserveAspectRatio="none" style="position:absolute;left:0;right:0;bottom:0;width:100%;height:150px" viewBox="0 0 1000 150" aria-hidden="true">'
+        f'<defs><linearGradient id="hz" x1="0" y1="0" x2="0" y2="1">'
+        f'<stop offset="0" stop-color="{c["primary"]}"/><stop offset="1" stop-color="{c["ink"]}"/></linearGradient></defs>'
+        f'<circle cx="820" cy="58" r="26" fill="{c["tertiary"]}"/>'
+        f'<circle cx="820" cy="58" r="40" fill="{c["hero_glow"]}" opacity=".35"/>'
+        f'<ellipse cx="500" cy="330" rx="760" ry="250" fill="url(#hz)"/>'
+        f'<line x1="0" y1="86" x2="1000" y2="86" stroke="{c["tertiary"]}" stroke-width="1.4" opacity=".8"/></svg></div>')
+
+
+def card_art(cfg, article, height=180) -> str:
+    cat = cfg["categories"][article["category"]]
+    gid = "g" + hashlib.sha1(article["slug"].encode()).hexdigest()[:8]
+    s = article["slug"]
+    circles = "".join(
+        f'<circle cx="{hnum(s, 30, 610, str(i))}" cy="{hnum(s, 20, 300, "y" + str(i))}" '
+        f'r="{hnum(s, 26, 90, "r" + str(i))}" fill="#fff" opacity=".{hnum(s, 8, 18, "o" + str(i))}"/>'
+        for i in range(3))
+    return (f'<svg class="thumb" viewBox="0 0 640 320" width="100%" height="{height}" '
+            f'preserveAspectRatio="xMidYMid slice" role="img" aria-label="{esc(cat["label"])}">'
+            f'<defs><linearGradient id="{gid}" x1="0" y1="0" x2="1" y2="1">'
+            f'<stop offset="0" stop-color="{cat["c1"]}"/><stop offset="1" stop-color="{cat["c2"]}"/></linearGradient></defs>'
+            f'<rect width="640" height="320" fill="url(#{gid})"/>{circles}'
+            f'<circle cx="320" cy="160" r="64" fill="#fff" opacity=".28"/>'
+            f'<text x="320" y="160" font-size="72" text-anchor="middle" dominant-baseline="central">{cat["emoji"]}</text></svg>')
+
+
+# ------------------------------------------------------------ helpers -----
+
+class Site:
+    def __init__(self, cfg, articles):
+        self.cfg = cfg
+        self.articles = articles
+        self.bp = cfg.get("base_path", "").rstrip("/")
+        self.base = cfg["base_url"].rstrip("/")
+
+    def u(self, path: str) -> str:              # site-relative URL
+        return f'{self.bp}{path}'
+
+    def abs_(self, path: str) -> str:           # absolute URL
+        return f'{self.base}{self.bp}{path}'
+
+    def article_path(self, a) -> str:
+        return f'/{self.cfg["article_prefix"]}/{a["slug"]}/'
+
+    def cat_path(self, cid) -> str:
+        return f'/c/{cid}/'
+
+
+def org_ld(site) -> dict:
+    return {"@type": "Organization", "name": site.cfg["site_name"], "url": site.abs_("/"),
+            "logo": {"@type": "ImageObject", "url": site.abs_("/assets/og-default.png")}}
+
+
+def base_page(site, *, title, description, path, body, jsonld=None, og_type="website",
+              og_image="/assets/og-default.png", noindex=False) -> str:
+    cfg = site.cfg
+    ld = "".join(f'<script type="application/ld+json">{json.dumps(x, ensure_ascii=False)}</script>'
+                 for x in (jsonld or []))
+    robots = '<meta name="robots" content="noindex">' if noindex else ""
+    return f"""<!DOCTYPE html>
+<html lang="{cfg['lang']}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{esc(title)}</title>
+<meta name="description" content="{esc(description)}">
+<link rel="canonical" href="{site.abs_(path)}">{robots}
+<meta property="og:site_name" content="{esc(cfg['site_name'])}">
+<meta property="og:type" content="{og_type}">
+<meta property="og:title" content="{esc(title)}">
+<meta property="og:description" content="{esc(description)}">
+<meta property="og:url" content="{site.abs_(path)}">
+<meta property="og:image" content="{site.abs_(og_image)}">
+<meta property="og:locale" content="{cfg['locale']}">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="{site.u('/assets/favicon.svg')}" type="image/svg+xml">
+<link rel="icon" href="{site.u('/assets/favicon.png')}" sizes="64x64">
+<link rel="apple-touch-icon" href="{site.u('/assets/apple-touch-icon.png')}">
+<link rel="alternate" type="application/rss+xml" title="{esc(cfg['site_name'])} RSS" href="{site.u('/feed.xml')}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="{cfg['fonts']['href']}">
+<link rel="stylesheet" href="{site.u('/assets/style.css')}">
+{ld}
+</head>
+<body class="brand-{cfg['brand']}">
+{header(site)}
+<main class="wrap" id="main">
+{body}
+</main>
+{footer(site)}
+</body>
+</html>"""
+
+
+def header(site, active: str | None = None) -> str:
+    cfg, ui = site.cfg, site.cfg["ui"]
+    chips = f'<a class="chip{" on" if active == "home" else ""}" href="{site.u("/")}">{esc(ui["home"])}</a>'
+    for cid, cat in cfg["categories"].items():
+        on = " on" if active == cid else ""
+        chips += f'<a class="chip{on}" href="{site.u(site.cat_path(cid))}">{cat["emoji"]} {esc(cat["label"])}</a>'
+    chips += f'<a class="chip{" on" if active == "about" else ""}" href="{site.u("/" + cfg["about_path"] + "/")}">{esc(ui["about"])}</a>'
+    return f"""<header class="masthead wrap">
+<div class="mast-row">
+{mark_svg(cfg)}
+<div class="brand"><a href="{site.u('/')}" aria-label="{esc(cfg['site_name'])}"><span class="h1">{esc(cfg['site_name'])}</span></a>
+<p>{esc(cfg['tagline'])}</p></div>
+<span class="today">{esc(fmt_today(cfg['lang']))}</span>
+</div>
+<nav class="cats" aria-label="categories">{chips}</nav>
+</header>"""
+
+
+def footer(site) -> str:
+    cfg, ui = site.cfg, site.cfg["ui"]
+    year = datetime.now().year
+    return f"""<footer><div class="wrap">
+<strong style="font-family:var(--fd);font-size:1.05rem">{esc(cfg['site_name'])}</strong>
+<p class="mission">{esc(ui['footer_mission'])}</p>
+<nav class="fnav">
+<a href="{site.u('/' + cfg['about_path'] + '/')}">{esc(ui['about'])}</a>
+<a href="{site.u('/feed.xml')}">{esc(ui['rss'])}</a>
+<a href="mailto:{esc(cfg['contact_email'])}">{esc(cfg['contact_email'])}</a>
+</nav>
+<p class="fine">© {year} {esc(cfg['site_name'])} · ☀</p>
+</div></footer>"""
+
+
+def meta_row(site, a, with_cat=True) -> str:
+    cfg, ui = site.cfg, site.cfg["ui"]
+    cat = cfg["categories"][a["category"]]
+    cat_html = (f'<a class="cat" href="{site.u(site.cat_path(a["category"]))}">'
+                f'{cat["emoji"]} {esc(cat["label"])}</a> · ' if with_cat else "")
+    return (f'<div class="meta">{cat_html}'
+            f'<time datetime="{a["published"]}">{fmt_date(a["_dt"], cfg["lang"])}</time>'
+            f' · {reading_time(a["body"])} {ui["min_read"]}</div>')
+
+
+def card(site, a) -> str:
+    href = site.u(site.article_path(a))
+    return f"""<article class="card">
+<a href="{href}" aria-label="{esc(a['headline'])}">{card_art(site.cfg, a)}</a>
+<div class="cbody">
+<h3><a href="{href}">{esc(a['headline'])}</a></h3>
+<p>{esc(a['summary_short'])}</p>
+{meta_row(site, a)}
+</div></article>"""
+
+
+def hero(site, a) -> str:
+    cfg, ui = site.cfg, site.cfg["ui"]
+    cat = cfg["categories"][a["category"]]
+    return f"""<section class="hero">
+{hero_art(cfg)}
+<div class="hero-inner">
+<span class="kicker"><span class="dot"></span>{esc(ui['hero_kicker'])} · {cat['emoji']} {esc(cat['label'])}</span>
+<h2><a href="{site.u(site.article_path(a))}">{esc(a['headline'])}</a></h2>
+<p class="teaser">{esc(a['summary_short'])}</p>
+<a class="btn" href="{site.u(site.article_path(a))}">{esc(ui['read_more'])} →</a>
+</div></section>"""
+
+
+def pager(site, base_path: str, page: int, pages: int) -> str:
+    if pages <= 1:
+        return ""
+    ui = site.cfg["ui"]
+
+    def link(p):
+        return site.u(base_path if p == 1 else f'{base_path}page/{p}/')
+
+    parts = []
+    if page > 1:
+        parts.append(f'<a href="{link(page - 1)}">← {ui["newer"]}</a>')
+    parts.append(f'<span class="cur">{ui["page"]} {page} / {pages}</span>')
+    if page < pages:
+        parts.append(f'<a href="{link(page + 1)}">{ui["older"]} →</a>')
+    return f'<nav class="pager" aria-label="pagination">{"".join(parts)}</nav>'
+
+
+def write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+# -------------------------------------------------------------- pages -----
+
+def build_lists(site) -> None:
+    cfg, ui = site.cfg, site.cfg["ui"]
+    groups = [("home", "/", site.articles, cfg["description"], cfg["site_name"] + " — " + cfg["tagline"])]
+    for cid, cat in cfg["categories"].items():
+        arts = [a for a in site.articles if a["category"] == cid]
+        groups.append((cid, site.cat_path(cid), arts,
+                       f'{cat["label"]} · {cfg["site_name"]} — {cfg["tagline"]}',
+                       f'{cat["label"]} · {cfg["site_name"]}'))
+    for key, base_path, arts, desc, title in groups:
+        pages = max(1, -(-len(arts) // PAGE_SIZE))
+        for p in range(1, pages + 1):
+            chunk = arts[(p - 1) * PAGE_SIZE: p * PAGE_SIZE]
+            body = ""
+            rest = chunk
+            if key == "home" and p == 1 and chunk:
+                body += hero(site, chunk[0])
+                rest = chunk[1:]
+            label = ui["latest"] if key == "home" else f'{cfg["categories"][key]["emoji"]} {cfg["categories"][key]["label"]}'
+            body += f'<div class="sec"><h2>{esc(label)}</h2><span class="rule"></span></div>'
+            body += '<div class="grid">' + "".join(card(site, a) for a in rest) + "</div>"
+            body += pager(site, base_path, p, pages)
+            jsonld = None
+            if key == "home" and p == 1:
+                jsonld = [{"@context": "https://schema.org", "@type": "WebSite",
+                           "name": cfg["site_name"], "url": site.abs_("/"),
+                           "description": cfg["description"], "inLanguage": cfg["lang"],
+                           "publisher": org_ld(site)}]
+            path = base_path if p == 1 else f'{base_path}page/{p}/'
+            out = DIST / path.strip("/") / "index.html" if path != "/" else DIST / "index.html"
+            write(out, base_page(site, title=title if p == 1 else f'{title} · {ui["page"]} {p}',
+                                 description=desc, path=path, body=body, jsonld=jsonld,
+                                 noindex=(p > 1)))
+
+
+def build_articles(site) -> None:
+    cfg, ui = site.cfg, site.cfg["ui"]
+    for a in site.articles:
+        cat = cfg["categories"][a["category"]]
+        paras = "".join(f"<p>{esc(p.strip())}</p>" for p in a["body"].split("\n\n") if p.strip())
+        related = [r for r in site.articles if r["category"] == a["category"] and r["slug"] != a["slug"]][:3]
+        if len(related) < 3:
+            seen = {r["slug"] for r in related} | {a["slug"]}
+            related += [r for r in site.articles if r["slug"] not in seen][: 3 - len(related)]
+        rel_html = ""
+        if related:
+            rel_html = (f'<div class="sec"><h2>{esc(ui["more_good"])}</h2><span class="rule"></span></div>'
+                        '<div class="grid">' + "".join(card(site, r) for r in related) + "</div>")
+        tags = "".join(f'<span class="tag">#{esc(t)}</span>' for t in a.get("tags", []))
+        src = ""
+        if a.get("source_url"):
+            src = (f'<aside class="srcbox"><strong>{esc(ui["source"])}:</strong> '
+                   f'<a href="{esc(a["source_url"])}" target="_blank" rel="noopener">{esc(a["source_name"])}</a>'
+                   f'<p class="ainote">{esc(ui["ai_note"])}</p></aside>')
+        body = f"""<article class="article">
+<a class="backlink" href="{site.u('/')}">← {esc(ui['back_home'])}</a>
+{meta_row(site, a)}
+<h1>{esc(a['headline'])}</h1>
+<div class="banner">{card_art(cfg, a, height=250)}</div>
+<div class="body">{paras}</div>
+{f'<div class="tags">{tags}</div>' if tags else ''}
+{src}
+</article>
+{rel_html}"""
+        path = site.article_path(a)
+        ld = {"@context": "https://schema.org", "@type": "NewsArticle",
+              "headline": a["headline"], "description": a["meta_description"],
+              "datePublished": a["published"], "dateModified": a["published"],
+              "inLanguage": cfg["lang"], "articleSection": cat["label"],
+              "mainEntityOfPage": site.abs_(path),
+              "image": [site.abs_("/assets/og-default.png")],
+              "author": org_ld(site), "publisher": org_ld(site)}
+        if a.get("source_url"):
+            ld["isBasedOn"] = a["source_url"]
+        write(DIST / path.strip("/") / "index.html",
+              base_page(site, title=f'{a["headline"]} · {cfg["site_name"]}',
+                        description=a["meta_description"] or a["summary_short"],
+                        path=path, body=body, jsonld=[ld], og_type="article"))
+
+
+ABOUT = {
+    "bg": [
+        ("Защо съществуваме",
+         "Отвориш ли новините, светът изглежда черен: катастрофи, скандали, войни, поскъпване. Но това е само половината истина. Всеки ден в България лекари спасяват животи, доброволци садят гори, деца печелят олимпиади, съседи си помагат. {site} събира точно тези истории — само тях."),
+        ("Как избираме новините",
+         "Наш AI редактор чете водещите български медии няколко пъти дневно и подбира единствено истински добрите новини: конкретни хубави събития, без трагедии „с позитивен привкус“, без политически битки, без криминални хроники. После написва кратко, човешко резюме на български."),
+        ("Прозрачност",
+         "Всяко резюме е написано от изкуствен интелект по информация от посочения източник и никога не добавя измислени факти. Под всяка новина стои връзка към оригиналната публикация — препоръчваме да я отворите за пълната история. Ако забележите грешка, пишете ни и ще я поправим."),
+        ("Свържи се с нас",
+         "Знаеш за добра новина, която сме пропуснали? Пиши ни на {email} — най-хубавите истории често идват от читатели."),
+    ],
+    "en": [
+        ("Why we exist",
+         "Open any news site and the world looks dark: crashes, scandals, wars, prices. But that is only half the truth. Every single day, somewhere on this planet, a species comes back from the brink, a disease loses ground, a stranger helps a stranger. {site} collects exactly those stories — and only those."),
+        ("How stories are chosen",
+         "Our AI editor reads trusted international sources several times a day and selects only genuinely good news: concrete positive outcomes, no tragedies dressed up with a silver lining, no partisan politics, no crime. It then writes a short, human summary in plain English."),
+        ("Transparency",
+         "Every summary is written by an AI from the linked source's reporting and never adds invented facts. Each story credits and links the original publication — we encourage you to read it in full. Spot an error? Tell us and we will fix it."),
+        ("Get in touch",
+         "Know a good story we missed? Write to {email} — the best finds often come from readers."),
+    ],
+}
+
+
+def build_about(site) -> None:
+    cfg = site.cfg
+    secs = "".join(
+        f'<h2>{esc(h)}</h2><p>{esc(t.format(site=cfg["site_name"], email=cfg["contact_email"]))}</p>'
+        for h, t in ABOUT[cfg["lang"]])
+    body = f'<div class="about"><h1>{esc(cfg["ui"]["about"])} · {esc(cfg["site_name"])}</h1>{secs}</div>'
+    path = f'/{cfg["about_path"]}/'
+    write(DIST / cfg["about_path"] / "index.html",
+          base_page(site, title=f'{cfg["ui"]["about"]} · {cfg["site_name"]}',
+                    description=cfg["description"], path=path, body=body))
+
+
+def build_404(site) -> None:
+    ui = site.cfg["ui"]
+    body = (f'<div class="nf"><div class="big">🌤</div><h1>{esc(ui["not_found_title"])}</h1>'
+            f'<p>{esc(ui["not_found_text"])}</p><p><a class="btn" href="{site.u("/")}">{esc(ui["back_home"])}</a></p></div>')
+    write(DIST / "404.html", base_page(site, title=f'404 · {site.cfg["site_name"]}',
+                                       description=ui["not_found_text"], path="/404.html",
+                                       body=body, noindex=True))
+
+
+def build_feed(site) -> None:
+    cfg = site.cfg
+    items = ""
+    for a in site.articles[:30]:
+        items += f"""<item>
+<title>{esc(a['headline'])}</title>
+<link>{site.abs_(site.article_path(a))}</link>
+<guid isPermaLink="true">{site.abs_(site.article_path(a))}</guid>
+<pubDate>{format_datetime(a['_dt'])}</pubDate>
+<category>{esc(cfg['categories'][a['category']]['label'])}</category>
+<description>{esc(a['summary_short'])}</description>
+</item>"""
+    feed = f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+<title>{esc(cfg['site_name'])}</title>
+<link>{site.abs_('/')}</link>
+<description>{esc(cfg['description'])}</description>
+<language>{cfg['lang']}</language>
+<lastBuildDate>{format_datetime(datetime.now(timezone.utc))}</lastBuildDate>
+{items}
+</channel></rss>"""
+    write(DIST / "feed.xml", feed)
+
+
+def build_sitemap(site) -> None:
+    cfg = site.cfg
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    urls = [(site.abs_("/"), now), (site.abs_(f'/{cfg["about_path"]}/'), now)]
+    urls += [(site.abs_(site.cat_path(cid)), now) for cid in cfg["categories"]]
+    urls += [(site.abs_(site.article_path(a)), a["_dt"].strftime("%Y-%m-%d")) for a in site.articles]
+    body = "".join(f"<url><loc>{esc(u)}</loc><lastmod>{d}</lastmod></url>" for u, d in urls)
+    write(DIST / "sitemap.xml",
+          f'<?xml version="1.0" encoding="UTF-8"?>'
+          f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{body}</urlset>')
+    write(DIST / "robots.txt", f"User-agent: *\nAllow: /\n\nSitemap: {site.abs_('/sitemap.xml')}\n")
+
+
+# --------------------------------------------------------------- main -----
+
+def main() -> None:
+    cfg = load_config()
+    articles = load_articles(cfg)
+    site = Site(cfg, articles)
+
+    if DIST.exists():
+        shutil.rmtree(DIST)
+    (DIST / "assets").mkdir(parents=True)
+
+    css_tokens = {**cfg["colors"],
+                  "font_display": cfg["fonts"]["display"],
+                  "font_body": cfg["fonts"]["body"],
+                  "font_label": cfg["fonts"]["label"]}
+    write(DIST / "assets" / "style.css", CSS.substitute(css_tokens))
+
+    if ASSETS_SRC.exists():
+        for f in ASSETS_SRC.iterdir():
+            shutil.copy(f, DIST / "assets" / f.name)
+
+    build_lists(site)
+    build_articles(site)
+    build_about(site)
+    build_404(site)
+    build_feed(site)
+    build_sitemap(site)
+    print(f"[{cfg['site_name']}] built {len(articles)} articles → {DIST}")
+
+
+if __name__ == "__main__":
+    main()
