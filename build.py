@@ -10,8 +10,15 @@ SEO-optimized static site into dist/:
   /c/<category>/          category archives (paginated)
   /<prefix>/<slug>/       article pages (NewsArticle structured data)
   /<about>/               about + editorial policy + AI disclosure
+  /<privacy>/             privacy policy (GDPR/cookies)
   /feed.xml  /sitemap.xml  /robots.txt  /404.html
   /assets/                stylesheet, favicons, social image
+
+GA4 / AdSense / Search Console verification are all off by default: fill in
+the matching field in config.json (ga4_measurement_id, adsense_client_id,
+google_site_verification, bing_site_verification) and the site activates the
+Consent-Mode-v2 cookie banner and the relevant script automatically — no
+other code changes needed.
 
 Run:  python build.py
 """
@@ -189,6 +196,21 @@ footer .fine{color:var(--muted);font-size:.8rem;margin-top:18px}
 @media (prefers-reduced-motion:reduce){
  *{transition:none!important;animation:none!important}html{scroll-behavior:auto}
 }
+
+/* cookie consent banner */
+.cookie-banner{position:fixed;left:16px;right:16px;bottom:16px;z-index:999;
+max-width:640px;margin:0 auto;background:var(--ink);color:var(--bg);
+border-radius:16px;padding:18px 20px;box-shadow:0 12px 34px rgba(0,0,0,.28);
+display:flex;flex-wrap:wrap;align-items:center;gap:14px;font-size:.92rem}
+.cookie-banner p{margin:0;flex:1 1 260px;line-height:1.5}
+.cookie-banner a{text-decoration:underline;text-underline-offset:3px;color:var(--bg)}
+.cookie-actions{display:flex;gap:10px;flex:0 0 auto}
+.cookie-actions button{font-family:var(--fl);font-weight:700;font-size:.86rem;
+border-radius:999px;padding:9px 16px;border:1.5px solid color-mix(in srgb,var(--bg) 35%,transparent);
+background:transparent;color:var(--bg);cursor:pointer}
+.cookie-actions button#cookie-accept{background:var(--p);color:var(--ink);border-color:var(--p)}
+@media (max-width:480px){.cookie-banner{flex-direction:column;align-items:stretch}
+.cookie-actions{justify-content:stretch}.cookie-actions button{flex:1}}
 """)
 
 
@@ -276,6 +298,87 @@ def org_ld(site) -> dict:
             "logo": {"@type": "ImageObject", "url": site.abs_("/assets/og-default.png")}}
 
 
+def verification_tags(cfg) -> str:
+    """Search-console ownership meta tags. Empty config values render nothing."""
+    tags = []
+    gsv = cfg.get("google_site_verification", "")
+    bsv = cfg.get("bing_site_verification", "")
+    if gsv:
+        tags.append(f'<meta name="google-site-verification" content="{esc(gsv)}">')
+    if bsv:
+        tags.append(f'<meta name="msvalidate.01" content="{esc(bsv)}">')
+    return "".join(tags)
+
+
+def analytics_ads_enabled(cfg) -> bool:
+    return bool(cfg.get("ga4_measurement_id") or cfg.get("adsense_client_id"))
+
+
+def head_scripts(cfg) -> str:
+    """Google tag loader + Consent Mode v2 default (denied) set BEFORE any tag fires.
+    Renders nothing until a GA4 or AdSense id is added to config.json."""
+    if not analytics_ads_enabled(cfg):
+        return ""
+    ga4 = cfg.get("ga4_measurement_id", "")
+    ads = cfg.get("adsense_client_id", "")
+    loader_id = ga4 or ads
+    tags_snippet = ""
+    if ga4:
+        tags_snippet += f"gtag('config','{esc(ga4)}');"
+    ads_script = (
+        f'<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?'
+        f'client={esc(ads)}" crossorigin="anonymous"></script>' if ads else ""
+    )
+    return f"""<script async src="https://www.googletagmanager.com/gtag/js?id={esc(loader_id)}"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){{dataLayer.push(arguments);}}
+gtag('consent','default',{{
+  'ad_storage':'denied','analytics_storage':'denied',
+  'ad_user_data':'denied','ad_personalization':'denied'
+}});
+gtag('js', new Date());
+{tags_snippet}
+</script>
+{ads_script}"""
+
+
+def cookie_banner(site) -> str:
+    """Simple, equally-weighted accept/reject banner wired to Consent Mode v2.
+    Renders nothing until a GA4 or AdSense id is configured."""
+    cfg, ui = site.cfg, site.cfg["ui"]
+    if not analytics_ads_enabled(cfg):
+        return ""
+    return f"""<div id="cookie-banner" class="cookie-banner" hidden role="dialog" aria-label="{esc(ui['cookie_accept'])}">
+<p>{esc(ui['cookie_text'])} <a href="{site.u('/' + cfg['privacy_path'] + '/')}">{esc(ui['privacy'])}</a></p>
+<div class="cookie-actions">
+<button id="cookie-reject" type="button">{esc(ui['cookie_reject'])}</button>
+<button id="cookie-accept" type="button">{esc(ui['cookie_accept'])}</button>
+</div></div>
+<script>
+(function(){{
+  var KEY='cookie_consent_v1';
+  function apply(state){{
+    if (typeof gtag !== 'function') return;
+    gtag('consent','update',{{'ad_storage':state,'analytics_storage':state,
+      'ad_user_data':state,'ad_personalization':state}});
+  }}
+  var saved = localStorage.getItem(KEY);
+  var b = document.getElementById('cookie-banner');
+  if (saved) {{ apply(saved); }}
+  else if (b) {{ b.hidden = false; }}
+  var a = document.getElementById('cookie-accept');
+  var r = document.getElementById('cookie-reject');
+  if (a) a.addEventListener('click', function(){{
+    localStorage.setItem(KEY,'granted'); apply('granted'); b.hidden = true;
+  }});
+  if (r) r.addEventListener('click', function(){{
+    localStorage.setItem(KEY,'denied'); apply('denied'); b.hidden = true;
+  }});
+}})();
+</script>"""
+
+
 def base_page(site, *, title, description, path, body, jsonld=None, og_type="website",
               og_image="/assets/og-default.png", noindex=False) -> str:
     cfg = site.cfg
@@ -306,6 +409,8 @@ def base_page(site, *, title, description, path, body, jsonld=None, og_type="web
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="{cfg['fonts']['href']}">
 <link rel="stylesheet" href="{site.u('/assets/style.css')}">
+{verification_tags(cfg)}
+{head_scripts(cfg)}
 {ld}
 </head>
 <body class="brand-{cfg['brand']}">
@@ -314,6 +419,7 @@ def base_page(site, *, title, description, path, body, jsonld=None, og_type="web
 {body}
 </main>
 {footer(site)}
+{cookie_banner(site)}
 </body>
 </html>"""
 
@@ -344,6 +450,7 @@ def footer(site) -> str:
 <p class="mission">{esc(ui['footer_mission'])}</p>
 <nav class="fnav">
 <a href="{site.u('/' + cfg['about_path'] + '/')}">{esc(ui['about'])}</a>
+<a href="{site.u('/' + cfg['privacy_path'] + '/')}">{esc(ui['privacy'])}</a>
 <a href="{site.u('/feed.xml')}">{esc(ui['rss'])}</a>
 <a href="mailto:{esc(cfg['contact_email'])}">{esc(cfg['contact_email'])}</a>
 </nav>
@@ -524,6 +631,53 @@ def build_about(site) -> None:
                     description=cfg["description"], path=path, body=body))
 
 
+PRIVACY = {
+    "bg": [
+        ("Какво обхваща тази политика",
+         "Тази страница обяснява какви данни се събират, когато четете {site}, и с какви инструменти на трети страни (Google Анализ, Google реклами) работим. Не изискваме регистрация и не събираме лични данни за създаване на профил."),
+        ("Каква информация се събира",
+         "Хостинг доставчикът записва стандартни технически логове (IP адрес, браузър, посетена страница) за всеки сайт в интернет. Ако сте дали съгласие през банера за бисквитки, Google Анализ събира обобщена, анонимизирана статистика за посещенията, а Google реклами може да показва реклами въз основа на бисквитки. Без съгласие тези инструменти не записват нищо, свързано с вас."),
+        ("Бисквитки и съгласие",
+         "При първо посещение виждате банер, който ви пита дали приемате бисквитки за анализ и реклами. Можете да откажете също толкова лесно, колкото да приемете. По всяко време можете да промените избора си, като изтриете бисквитките на сайта през настройките на браузъра си."),
+        ("Вашите права",
+         "Съгласно GDPR имате право на достъп, поправка, изтриване и възражение срещу обработката на данните ви. Тъй като не поддържаме профили или бази с лични данни отвъд анонимна статистика, повечето заявки се удовлетворяват автоматично чрез изтриване на бисквитките. За въпроси пишете ни на {email}."),
+        ("Трети страни",
+         "Google Анализ и Google реклами обработват данни съгласно собствените си политики за поверителност, достъпни на policies.google.com/privacy. Не споделяме данни с други трети страни."),
+        ("Промени",
+         "Тази политика може да се актуализира при нужда — например когато добавим нов инструмент. Датата на последната промяна винаги ще е видима тук."),
+    ],
+    "en": [
+        ("What this policy covers",
+         "This page explains what data is collected when you read {site}, and which third-party tools (Google Analytics, Google ads) we use. No account or sign-up is required, and we don't build personal profiles."),
+        ("What information is collected",
+         "Our hosting provider logs standard technical data (IP address, browser, page visited) for every website on the internet. If you accept the cookie banner, Google Analytics collects aggregated, anonymized visit statistics, and Google ads may show ads based on cookies. Without consent, neither tool records anything tied to you."),
+        ("Cookies and consent",
+         "On your first visit you'll see a banner asking whether you accept analytics and advertising cookies. Rejecting is exactly as easy as accepting. You can change your choice at any time by clearing this site's cookies in your browser settings."),
+        ("Your rights",
+         "Under GDPR you have the right to access, correct, delete, and object to processing of your data. Since we don't maintain accounts or personal databases beyond anonymized statistics, most requests are satisfied simply by clearing your cookies. For questions, write to {email}."),
+        ("Third parties",
+         "Google Analytics and Google ads process data under their own privacy policies, available at policies.google.com/privacy. We do not share data with any other third party."),
+        ("Changes",
+         "This policy may be updated as needed — for example, when we add a new tool. The date of the last change will always be visible here."),
+    ],
+}
+
+
+def build_privacy(site) -> None:
+    cfg = site.cfg
+    secs = "".join(
+        f'<h2>{esc(h)}</h2><p>{esc(t.format(site=cfg["site_name"], email=cfg["contact_email"]))}</p>'
+        for h, t in PRIVACY[cfg["lang"]])
+    updated = ("Последна промяна" if cfg["lang"] == "bg" else "Last updated") + \
+        f': {datetime.now(timezone.utc).strftime("%Y-%m-%d")}'
+    body = (f'<div class="about"><h1>{esc(cfg["ui"]["privacy"])} · {esc(cfg["site_name"])}</h1>'
+            f'{secs}<p class="fine">{esc(updated)}</p></div>')
+    path = f'/{cfg["privacy_path"]}/'
+    write(DIST / cfg["privacy_path"] / "index.html",
+          base_page(site, title=f'{cfg["ui"]["privacy"]} · {cfg["site_name"]}',
+                    description=cfg["description"], path=path, body=body))
+
+
 def build_404(site) -> None:
     ui = site.cfg["ui"]
     body = (f'<div class="nf"><div class="big">🌤</div><h1>{esc(ui["not_found_title"])}</h1>'
@@ -594,6 +748,7 @@ def main() -> None:
     build_lists(site)
     build_articles(site)
     build_about(site)
+    build_privacy(site)
     build_404(site)
     build_feed(site)
     build_sitemap(site)
