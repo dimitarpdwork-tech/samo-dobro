@@ -12,8 +12,8 @@
   "about_path": "za-nas",
   "contact_email": "zdravei@example.com",
   "model": "claude-haiku-4-5-20251001",
-  "max_new_per_run": 6,
-  "window_hours": 48,
+  "max_new_per_run": 40,
+  "window_hours": 720,
   "fonts": {
     "href": "https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;600;800&family=Sofia+Sans+Condensed:wght@600;700&display=swap",
     "display": "'Sofia Sans', system-ui, sans-serif",
