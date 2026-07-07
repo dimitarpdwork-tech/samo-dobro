@@ -202,6 +202,7 @@ footer .fine{color:var(--muted);font-size:.8rem;margin-top:18px}
 max-width:640px;margin:0 auto;background:var(--ink);color:var(--bg);
 border-radius:16px;padding:18px 20px;box-shadow:0 12px 34px rgba(0,0,0,.28);
 display:flex;flex-wrap:wrap;align-items:center;gap:14px;font-size:.92rem}
+.cookie-banner[hidden]{display:none}
 .cookie-banner p{margin:0;flex:1 1 260px;line-height:1.5}
 .cookie-banner a{text-decoration:underline;text-underline-offset:3px;color:var(--bg)}
 .cookie-actions{display:flex;gap:10px;flex:0 0 auto}
