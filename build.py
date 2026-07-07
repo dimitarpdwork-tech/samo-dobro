@@ -358,22 +358,24 @@ def cookie_banner(site) -> str:
 <script>
 (function(){{
   var KEY='cookie_consent_v1';
+  function safeGet(k){{ try {{ return localStorage.getItem(k); }} catch(e) {{ return null; }} }}
+  function safeSet(k,v){{ try {{ localStorage.setItem(k,v); }} catch(e) {{ /* storage blocked; consent still applies for this page view */ }} }}
   function apply(state){{
     if (typeof gtag !== 'function') return;
     gtag('consent','update',{{'ad_storage':state,'analytics_storage':state,
       'ad_user_data':state,'ad_personalization':state}});
   }}
-  var saved = localStorage.getItem(KEY);
+  var saved = safeGet(KEY);
   var b = document.getElementById('cookie-banner');
   if (saved) {{ apply(saved); }}
   else if (b) {{ b.hidden = false; }}
   var a = document.getElementById('cookie-accept');
   var r = document.getElementById('cookie-reject');
   if (a) a.addEventListener('click', function(){{
-    localStorage.setItem(KEY,'granted'); apply('granted'); b.hidden = true;
+    apply('granted'); safeSet(KEY,'granted'); if (b) b.hidden = true;
   }});
   if (r) r.addEventListener('click', function(){{
-    localStorage.setItem(KEY,'denied'); apply('denied'); b.hidden = true;
+    apply('denied'); safeSet(KEY,'denied'); if (b) b.hidden = true;
   }});
 }})();
 </script>"""
