@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+<title>Само Добро</title>
+<link>https://example.com/</link>
+<description>Само Добро събира единствено добрите новини от България — истински истории за доброта, природа, наука, култура и успехи, избрани всеки ден. Без черни хроники, без страх, без скандали.</description>
+<language>bg</language>
+<lastBuildDate>Tue, 07 Jul 2026 05:52:27 +0000</lastBuildDate>
+<item>
+<title>България вече плаща в евро — и премина спокойно</title>
+<link>https://example.com/novina/bulgaria-veche-plashta-v-evro/</link>
+<guid isPermaLink="true">https://example.com/novina/bulgaria-veche-plashta-v-evro/</guid>
+<pubDate>Tue, 07 Jul 2026 01:52:27 +0000</pubDate>
+<category>Икономика</category>
+<description>Половин година след влизането в еврозоната преходът е факт: без опашки и драми, с по-лесни пътувания и търговия.</description>
+</item><item>
+<title>Шенген без граници: пътуваме свободно по суша втора година</title>
+<link>https://example.com/novina/shengen-bez-granitsi-po-susha/</link>
+<guid isPermaLink="true">https://example.com/novina/shengen-bez-granitsi-po-susha/</guid>
+<pubDate>Mon, 06 Jul 2026 18:52:27 +0000</pubDate>
+<category>Общество</category>
+<description>Падането на сухопътните граници през 2025 г. спести на пътуващите и на бизнеса хиляди часове чакане на Кулата и Дунав мост.</description>
+</item><item>
+<title>Черният лешояд отново гнезди в Родопите след десетилетия</title>
+<link>https://example.com/novina/cheren-leshoyad-otnovo-v-rodopite/</link>
+<guid isPermaLink="true">https://example.com/novina/cheren-leshoyad-otnovo-v-rodopite/</guid>
+<pubDate>Mon, 06 Jul 2026 07:52:27 +0000</pubDate>
+<category>Природа</category>
+<description>Върнатата в Източните Родопи птица — една от най-редките в Европа — отново отглежда малки в българското небе.</description>
+</item><item>
+<title>България е световният лидер в лавандуловото масло</title>
+<link>https://example.com/novina/bulgaria-lider-lavandulovo-maslo/</link>
+<guid isPermaLink="true">https://example.com/novina/bulgaria-lider-lavandulovo-maslo/</guid>
+<pubDate>Sun, 05 Jul 2026 23:52:27 +0000</pubDate>
+<category>Икономика</category>
+<description>Лилавите полета край Казанлък и в Добруджа изпревариха дори Прованс — българското лавандулово масло ухае по целия свят.</description>
+</item><item>
+<title>Мартеницата е световно културно наследство на ЮНЕСКО</title>
+<link>https://example.com/novina/martenitsa-nasledstvo-yunesko/</link>
+<guid isPermaLink="true">https://example.com/novina/martenitsa-nasledstvo-yunesko/</guid>
+<pubDate>Sun, 05 Jul 2026 06:52:27 +0000</pubDate>
+<category>Култура</category>
+<description>Бяло-червената нишка, която връзваме всяка пролет, е призната от ЮНЕСКО за нематериално наследство на човечеството.</description>
+</item><item>
+<title>Вековните букови гори на Балкана — световно наследство</title>
+<link>https://example.com/novina/vekovni-bukovi-gori-yunesko/</link>
+<guid isPermaLink="true">https://example.com/novina/vekovni-bukovi-gori-yunesko/</guid>
+<pubDate>Sat, 04 Jul 2026 19:52:27 +0000</pubDate>
+<category>Природа</category>
+<description>Девствени букови гори в резерватите на Стара планина са част от световното природно наследство и остават недокоснати завинаги.</description>
+</item><item>
+<title>Детските градини в България са безплатни за семействата</title>
+<link>https://example.com/novina/bezplatni-detski-gradini/</link>
+<guid isPermaLink="true">https://example.com/novina/bezplatni-detski-gradini/</guid>
+<pubDate>Sat, 04 Jul 2026 04:52:27 +0000</pubDate>
+<category>Общество</category>
+<description>От пролетта на 2022 г. таксите в общинските ясли и детски градини в цялата страна са премахнати — облекчение за стотици хиляди семейства.</description>
+</item>
+</channel></rss>
