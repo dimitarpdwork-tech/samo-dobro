@@ -103,6 +103,7 @@ def hnum(seed: str, lo: int, hi: int, salt: str = "") -> int:
 # ---------------------------------------------------------------- css -----
 
 CSS = Template("""
+${font_faces}
 :root{--bg:${bg};--ink:${ink};--muted:${muted};--card:${card};--line:${line};
 --p:${primary};--pd:${primary_deep};--s:${secondary};--t:${tertiary};--glow:${hero_glow};
 --fd:${font_display};--fb:${font_body};--fl:${font_label};--r:18px;--maxw:1128px}
@@ -448,9 +449,6 @@ def base_page(site, *, title, description, path, body, jsonld=None, og_type="web
 <link rel="icon" href="{site.u('/assets/favicon.png')}" sizes="64x64">
 <link rel="apple-touch-icon" href="{site.u('/assets/apple-touch-icon.png')}">
 <link rel="alternate" type="application/rss+xml" title="{esc(cfg['site_name'])} RSS" href="{site.u('/feed.xml')}">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="{cfg['fonts']['href']}">
 <link rel="stylesheet" href="{site.u('/assets/style.css')}">
 {verification_tags(cfg)}
 {head_scripts(cfg)}
@@ -842,15 +840,29 @@ def main() -> None:
         shutil.rmtree(DIST)
     (DIST / "assets").mkdir(parents=True)
 
+    def font_faces_css(cfg) -> str:
+        rules = []
+        for face in cfg["fonts"].get("faces", []):
+            rules.append(
+                f"@font-face{{font-family:'{face['family']}';font-style:normal;"
+                f"font-weight:{face['weight']};font-display:swap;"
+                f"src:url('{face['file']}') format('woff2');}}"
+            )
+        return "\n".join(rules)
+
     css_tokens = {**cfg["colors"],
                   "font_display": cfg["fonts"]["display"],
                   "font_body": cfg["fonts"]["body"],
-                  "font_label": cfg["fonts"]["label"]}
+                  "font_label": cfg["fonts"]["label"],
+                  "font_faces": font_faces_css(cfg)}
     write(DIST / "assets" / "style.css", CSS.substitute(css_tokens))
 
     if ASSETS_SRC.exists():
         for f in ASSETS_SRC.iterdir():
-            shutil.copy(f, DIST / "assets" / f.name)
+            if f.is_dir():
+                shutil.copytree(f, DIST / "assets" / f.name, dirs_exist_ok=True)
+            else:
+                shutil.copy(f, DIST / "assets" / f.name)
 
     build_lists(site)
     build_articles(site)
