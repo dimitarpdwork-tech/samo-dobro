@@ -51,8 +51,22 @@ EN_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "
 # ---------------------------------------------------------------- data ----
 
 def load_config() -> dict:
-    with open(ROOT / "config.json", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(ROOT / "config.json", encoding="utf-8") as f:
+            text = f.read()
+    except FileNotFoundError:
+        print("ERROR: config.json is missing entirely from the repo root.")
+        raise SystemExit(1)
+    if not text.strip():
+        print("ERROR: config.json is empty (0 bytes). The full file content didn't "
+              "save — re-open it, select all, and paste the complete config back in.")
+        raise SystemExit(1)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        print(f"ERROR: config.json has a JSON syntax problem: {exc}\n"
+              "Check for a missing comma, quote, or brace near that position.")
+        raise SystemExit(1)
 
 
 def load_articles(cfg) -> list[dict]:
