@@ -122,10 +122,13 @@ a{color:inherit;text-decoration:none}img,svg{max-width:100%}
 .today{margin-left:auto;font-family:var(--fl);text-transform:uppercase;letter-spacing:.14em;
 font-size:.72rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;
 padding:7px 14px;background:var(--card)}
-nav.cats{display:flex;gap:8px;overflow-x:auto;padding:16px 0 6px;scrollbar-width:none}
+nav.cats{display:flex;gap:8px;overflow-x:auto;padding:16px 0 6px;scrollbar-width:none;
+position:relative;-webkit-mask-image:linear-gradient(90deg,#000 0 92%,transparent);
+mask-image:linear-gradient(90deg,#000 0 92%,transparent)}
 nav.cats::-webkit-scrollbar{display:none}
 .chip{flex:0 0 auto;font-family:var(--fl);font-size:.83rem;font-weight:700;letter-spacing:.04em;
-padding:7px 14px;border-radius:999px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);
+padding:13px 16px;min-height:48px;display:inline-flex;align-items:center;border-radius:999px;
+border:1.5px solid var(--line);background:var(--card);color:var(--ink);
 transition:transform .15s,border-color .15s}
 .chip:hover{border-color:var(--p);transform:translateY(-1px)}
 .chip.on{background:var(--ink);border-color:var(--ink);color:var(--card)}
@@ -154,6 +157,7 @@ font-family:var(--fl);font-size:.8rem;letter-spacing:.03em}
 .sec h2{font-family:var(--fd);font-weight:800;font-size:1.35rem;margin:0;letter-spacing:-.01em}
 .sec .rule{flex:1;height:5px;border-radius:99px;background:linear-gradient(90deg,var(--p),var(--glow) 55%,transparent)}
 body.brand-globe .sec .rule{height:2px;background:linear-gradient(90deg,var(--t) 0 64px,var(--line) 64px);position:relative}
+.cat-intro{color:var(--muted);font-size:1.02rem;line-height:1.6;max-width:64ch;margin:4px 0 20px}
 
 /* grid + cards */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(292px,1fr));gap:22px;margin-bottom:34px}
@@ -170,6 +174,9 @@ display:flex;flex-direction:column;transition:transform .18s,box-shadow .18s}
 .article{max-width:720px;margin:10px auto 40px}
 .article h1{font-family:var(--fd);font-weight:800;font-size:clamp(1.7rem,4.4vw,2.55rem);
 line-height:1.14;letter-spacing:-.02em;margin:10px 0 14px}
+.ai-badge{display:inline-block;font-family:var(--fl);font-size:.72rem;font-weight:700;
+letter-spacing:.04em;color:var(--muted);background:var(--card);border:1px solid var(--line);
+border-radius:999px;padding:4px 11px;margin:0 0 14px}
 .article .banner{border-radius:var(--r);overflow:hidden;margin:20px 0;line-height:0;border:1px solid var(--line)}
 .article .body p{font-size:1.07rem;line-height:1.75;margin:0 0 1.2em}
 .tags{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}
@@ -198,7 +205,10 @@ footer .fine{color:var(--muted);font-size:.8rem;margin-top:18px}
 .nf .big{font-size:4rem}
 
 @media (max-width:700px){
- .hero-inner{padding:30px 24px;max-width:100%}
+ .hero-inner{padding:22px 20px 20px;max-width:100%}
+ .kicker{margin-bottom:8px}
+ .hero h2{font-size:clamp(1.35rem,5.5vw,1.85rem);margin-bottom:8px}
+ .hero p.teaser{margin:0 0 14px;font-size:.98rem}
  .hero-art svg.side{opacity:.35}
  .today{display:none}
 }
@@ -219,8 +229,8 @@ display:flex;flex-wrap:wrap;align-items:center;gap:14px;font-size:.92rem}
 border-radius:999px;padding:9px 16px;border:1.5px solid color-mix(in srgb,var(--bg) 35%,transparent);
 background:transparent;color:var(--bg);cursor:pointer}
 .cookie-actions button#cookie-accept{background:var(--p);color:var(--ink);border-color:var(--p)}
-@media (max-width:480px){.cookie-banner{flex-direction:column;align-items:stretch}
-.cookie-actions{justify-content:stretch}.cookie-actions button{flex:1}}
+@media (max-width:480px){.cookie-banner{padding:14px 16px}
+.cookie-actions button{min-height:44px}}
 """)
 
 
@@ -304,8 +314,13 @@ class Site:
 
 
 def org_ld(site) -> dict:
-    return {"@type": "Organization", "name": site.cfg["site_name"], "url": site.abs_("/"),
-            "logo": {"@type": "ImageObject", "url": site.abs_("/assets/og-default.png")}}
+    cfg = site.cfg
+    return {"@type": "Organization", "name": cfg["site_name"], "url": site.abs_("/"),
+            "logo": {"@type": "ImageObject", "url": site.abs_("/assets/og-default.png")},
+            "foundingDate": cfg.get("founding_date", "2026-07-01"),
+            "contactPoint": {"@type": "ContactPoint", "email": cfg["contact_email"],
+                              "contactType": "editorial"},
+            "sameAs": cfg.get("same_as", [])}
 
 
 def verification_tags(cfg) -> str:
@@ -392,7 +407,7 @@ def cookie_banner(site) -> str:
 
 
 def base_page(site, *, title, description, path, body, jsonld=None, og_type="website",
-              og_image="/assets/og-default.png", noindex=False) -> str:
+              og_image="/assets/og-default.png", noindex=False, is_home=False) -> str:
     cfg = site.cfg
     ld = "".join(f'<script type="application/ld+json">{json.dumps(x, ensure_ascii=False)}</script>'
                  for x in (jsonld or []))
@@ -426,7 +441,7 @@ def base_page(site, *, title, description, path, body, jsonld=None, og_type="web
 {ld}
 </head>
 <body class="brand-{cfg['brand']}">
-{header(site)}
+{header(site, is_home=is_home)}
 <main class="wrap" id="main">
 {body}
 </main>
@@ -436,17 +451,19 @@ def base_page(site, *, title, description, path, body, jsonld=None, og_type="web
 </html>"""
 
 
-def header(site, active: str | None = None) -> str:
+def header(site, active: str | None = None, is_home: bool = False) -> str:
     cfg, ui = site.cfg, site.cfg["ui"]
     chips = f'<a class="chip{" on" if active == "home" else ""}" href="{site.u("/")}">{esc(ui["home"])}</a>'
     for cid, cat in cfg["categories"].items():
         on = " on" if active == cid else ""
         chips += f'<a class="chip{on}" href="{site.u(site.cat_path(cid))}">{cat["emoji"]} {esc(cat["label"])}</a>'
     chips += f'<a class="chip{" on" if active == "about" else ""}" href="{site.u("/" + cfg["about_path"] + "/")}">{esc(ui["about"])}</a>'
+    brand_name = (f'<h1 class="h1">{esc(cfg["site_name"])}</h1>' if is_home
+                  else f'<span class="h1">{esc(cfg["site_name"])}</span>')
     return f"""<header class="masthead wrap">
 <div class="mast-row">
 {mark_svg(cfg)}
-<div class="brand"><a href="{site.u('/')}" aria-label="{esc(cfg['site_name'])}"><span class="h1">{esc(cfg['site_name'])}</span></a>
+<div class="brand"><a href="{site.u('/')}" aria-label="{esc(cfg['site_name'])}">{brand_name}</a>
 <p>{esc(cfg['tagline'])}</p></div>
 <span class="today">{esc(fmt_today(cfg['lang']))}</span>
 </div>
@@ -528,15 +545,25 @@ def write(path: Path, text: str) -> None:
 
 # -------------------------------------------------------------- pages -----
 
+def breadcrumb_ld(site, crumbs: list[tuple[str, str]]) -> dict:
+    """crumbs: list of (name, url) from home outward."""
+    return {"@context": "https://schema.org", "@type": "BreadcrumbList",
+            "itemListElement": [
+                {"@type": "ListItem", "position": i + 1, "name": name, "item": url}
+                for i, (name, url) in enumerate(crumbs)
+            ]}
+
+
 def build_lists(site) -> None:
     cfg, ui = site.cfg, site.cfg["ui"]
-    groups = [("home", "/", site.articles, cfg["description"], cfg["site_name"] + " — " + cfg["tagline"])]
+    groups = [("home", "/", site.articles, cfg["description"], cfg["site_name"] + " — " + cfg["tagline"], "")]
     for cid, cat in cfg["categories"].items():
         arts = [a for a in site.articles if a["category"] == cid]
-        groups.append((cid, site.cat_path(cid), arts,
-                       f'{cat["label"]} · {cfg["site_name"]} — {cfg["tagline"]}',
-                       f'{cat["label"]} · {cfg["site_name"]}'))
-    for key, base_path, arts, desc, title in groups:
+        intro = cat.get("intro", "")
+        desc = intro if intro else f'{cat["label"]} · {cfg["site_name"]} — {cfg["tagline"]}'
+        groups.append((cid, site.cat_path(cid), arts, desc,
+                       f'{cat["label"]} · {cfg["site_name"]}', intro))
+    for key, base_path, arts, desc, title, intro in groups:
         pages = max(1, -(-len(arts) // PAGE_SIZE))
         for p in range(1, pages + 1):
             chunk = arts[(p - 1) * PAGE_SIZE: p * PAGE_SIZE]
@@ -547,6 +574,8 @@ def build_lists(site) -> None:
                 rest = chunk[1:]
             label = ui["latest"] if key == "home" else f'{cfg["categories"][key]["emoji"]} {cfg["categories"][key]["label"]}'
             body += f'<div class="sec"><h2>{esc(label)}</h2><span class="rule"></span></div>'
+            if intro and p == 1:
+                body = f'<p class="cat-intro">{esc(intro)}</p>' + body
             body += '<div class="grid">' + "".join(card(site, a) for a in rest) + "</div>"
             body += pager(site, base_path, p, pages)
             jsonld = None
@@ -555,11 +584,22 @@ def build_lists(site) -> None:
                            "name": cfg["site_name"], "url": site.abs_("/"),
                            "description": cfg["description"], "inLanguage": cfg["lang"],
                            "publisher": org_ld(site)}]
+            elif key != "home":
+                cat = cfg["categories"][key]
+                crumbs = [(ui["home"], site.abs_("/")), (cat["label"], site.abs_(site.cat_path(key)))]
+                jsonld = [
+                    breadcrumb_ld(site, crumbs),
+                    {"@context": "https://schema.org", "@type": "CollectionPage",
+                     "name": f'{cat["label"]} · {cfg["site_name"]}',
+                     "description": intro or desc, "url": site.abs_(site.cat_path(key)),
+                     "isPartOf": {"@type": "WebSite", "name": cfg["site_name"], "url": site.abs_("/")},
+                     "inLanguage": cfg["lang"]}
+                ]
             path = base_path if p == 1 else f'{base_path}page/{p}/'
             out = DIST / path.strip("/") / "index.html" if path != "/" else DIST / "index.html"
             write(out, base_page(site, title=title if p == 1 else f'{title} · {ui["page"]} {p}',
                                  description=desc, path=path, body=body, jsonld=jsonld,
-                                 noindex=(p > 1)))
+                                 noindex=(p > 1), is_home=(key == "home" and p == 1)))
 
 
 def build_articles(site) -> None:
@@ -585,6 +625,7 @@ def build_articles(site) -> None:
 <a class="backlink" href="{site.u('/')}">← {esc(ui['back_home'])}</a>
 {meta_row(site, a)}
 <h1>{esc(a['headline'])}</h1>
+<span class="ai-badge">{esc(ui['ai_badge'])}</span>
 <div class="banner">{card_art(cfg, a, height=250)}</div>
 <div class="body">{paras}</div>
 {f'<div class="tags">{tags}</div>' if tags else ''}
@@ -592,6 +633,8 @@ def build_articles(site) -> None:
 </article>
 {rel_html}"""
         path = site.article_path(a)
+        crumbs = [(ui["home"], site.abs_("/")), (cat["label"], site.abs_(site.cat_path(a["category"]))),
+                  (a["headline"], site.abs_(path))]
         ld = {"@context": "https://schema.org", "@type": "NewsArticle",
               "headline": a["headline"], "description": a["meta_description"],
               "datePublished": a["published"], "dateModified": a["published"],
@@ -604,7 +647,7 @@ def build_articles(site) -> None:
         write(DIST / path.strip("/") / "index.html",
               base_page(site, title=f'{a["headline"]} · {cfg["site_name"]}',
                         description=a["meta_description"] or a["summary_short"],
-                        path=path, body=body, jsonld=[ld], og_type="article"))
+                        path=path, body=body, jsonld=[ld, breadcrumb_ld(site, crumbs)], og_type="article"))
 
 
 ABOUT = {
@@ -726,8 +769,15 @@ def build_feed(site) -> None:
 def build_sitemap(site) -> None:
     cfg = site.cfg
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    urls = [(site.abs_("/"), now), (site.abs_(f'/{cfg["about_path"]}/'), now)]
-    urls += [(site.abs_(site.cat_path(cid)), now) for cid in cfg["categories"]]
+    urls = [(site.abs_("/"), now), (site.abs_(f'/{cfg["about_path"]}/'), now),
+            (site.abs_(f'/{cfg["privacy_path"]}/'), now)]
+    home_pages = max(1, -(-len(site.articles) // PAGE_SIZE))
+    urls += [(site.abs_(f'/page/{p}/'), now) for p in range(2, home_pages + 1)]
+    for cid in cfg["categories"]:
+        arts = [a for a in site.articles if a["category"] == cid]
+        urls.append((site.abs_(site.cat_path(cid)), now))
+        pages = max(1, -(-len(arts) // PAGE_SIZE))
+        urls += [(site.abs_(f'{site.cat_path(cid)}page/{p}/'), now) for p in range(2, pages + 1)]
     urls += [(site.abs_(site.article_path(a)), a["_dt"].strftime("%Y-%m-%d")) for a in site.articles]
     body = "".join(f"<url><loc>{esc(u)}</loc><lastmod>{d}</lastmod></url>" for u, d in urls)
     write(DIST / "sitemap.xml",
@@ -735,8 +785,36 @@ def build_sitemap(site) -> None:
           f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{body}</urlset>')
     write(DIST / "robots.txt", f"User-agent: *\nAllow: /\n\nSitemap: {site.abs_('/sitemap.xml')}\n")
 
+    key = cfg.get("indexnow_key", "")
+    if key:
+        write(DIST / f"{key}.txt", key)
+
 
 # --------------------------------------------------------------- main -----
+
+def build_llms_txt(site) -> None:
+    cfg = site.cfg
+    recent = "\n".join(f'- {a["headline"]}: {site.abs_(site.article_path(a))}' for a in site.articles[:15])
+    txt = f"""# {cfg['site_name']}
+
+> {cfg['tagline']}
+
+{cfg['description']}
+
+{cfg['site_name']} is an independently published, AI-assisted good-news site.
+Every article is an original summary written from a single credited source,
+never invented, always linked. See {site.abs_('/' + cfg['about_path'] + '/')} for
+the full editorial policy and AI-disclosure statement.
+
+## Recent articles
+{recent}
+
+## Feeds
+- Sitemap: {site.abs_('/sitemap.xml')}
+- RSS: {site.abs_('/feed.xml')}
+"""
+    write(DIST / "llms.txt", txt)
+
 
 def main() -> None:
     cfg = load_config()
@@ -764,6 +842,7 @@ def main() -> None:
     build_404(site)
     build_feed(site)
     build_sitemap(site)
+    build_llms_txt(site)
     print(f"[{cfg['site_name']}] built {len(articles)} articles → {DIST}")
 
 
