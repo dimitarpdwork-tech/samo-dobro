@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "17 5,11,17 * * *"   # three times a day (UTC)
   workflow_dispatch:              # run manually from the Actions tab
+    inputs:
+      backfill_photos:
+        description: "One-off: add real photos to existing articles that don't have one yet (instead of publishing new stories)"
+        type: boolean
+        default: false
   push:
     branches: [main]              # deploys design/content edits without the AI step
 
@@ -33,10 +38,16 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Fetch and write new stories (AI pipeline)
-        if: github.event_name != 'push'
+        if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python pipeline.py
+
+      - name: Backfill photos on existing articles (one-off)
+        if: github.event.inputs.backfill_photos == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python pipeline.py --backfill-photos
 
       - name: Commit new stories
         if: github.event_name != 'push'
