@@ -346,9 +346,11 @@ def org_ld(site) -> dict:
             "sameAs": cfg.get("same_as", [])}
 
 
-def person_ld(site) -> dict:
+def person_ld(site) -> dict | None:
     cfg = site.cfg
-    return {"@type": "Person", "name": cfg["editor_name"], "jobTitle": cfg["editor_title"]}
+    if not cfg.get("editor_name"):
+        return None
+    return {"@type": "Person", "name": cfg["editor_name"], "jobTitle": cfg.get("editor_title", "Editor")}
 
 
 def verification_tags(cfg) -> str:
@@ -666,7 +668,7 @@ def build_articles(site) -> None:
               "inLanguage": cfg["lang"], "articleSection": cat["label"],
               "mainEntityOfPage": site.abs_(path),
               "image": [a["photo_url"]] if a.get("photo_url") else [site.abs_("/assets/og-default.png")],
-              "author": person_ld(site), "publisher": org_ld(site)}
+              "author": person_ld(site) or org_ld(site), "publisher": org_ld(site)}
         if a.get("source_url"):
             ld["isBasedOn"] = a["source_url"]
         write(DIST / path.strip("/") / "index.html",
@@ -705,10 +707,12 @@ def build_about(site) -> None:
     secs = "".join(
         f'<h2>{esc(h)}</h2><p>{esc(t.format(site=cfg["site_name"], email=cfg["contact_email"]))}</p>'
         for h, t in ABOUT[cfg["lang"]])
-    editor = (f'<div class="editor-card">'
-              f'<div class="editor-name">{esc(cfg["editor_name"])}</div>'
-              f'<div class="editor-title">{esc(cfg["editor_title"])}</div>'
-              f'<p>{esc(cfg["editor_bio"])}</p></div>')
+    editor = ""
+    if cfg.get("editor_name"):
+        editor = (f'<div class="editor-card">'
+                  f'<div class="editor-name">{esc(cfg["editor_name"])}</div>'
+                  f'<div class="editor-title">{esc(cfg.get("editor_title", ""))}</div>'
+                  f'<p>{esc(cfg.get("editor_bio", ""))}</p></div>')
     body = f'<div class="about"><h1>{esc(cfg["ui"]["about"])} · {esc(cfg["site_name"])}</h1>{editor}{secs}</div>'
     path = f'/{cfg["about_path"]}/'
     write(DIST / cfg["about_path"] / "index.html",
