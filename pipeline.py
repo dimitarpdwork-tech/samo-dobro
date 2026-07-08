@@ -393,16 +393,91 @@ def check_feeds(cfg: dict) -> None:
     print(f"{ok}/{len(cfg['feeds'])} feeds working. Remove or replace failing ones in config.json.")
 
 
+def backfill_photos(cfg: dict) -> None:
+    """One-off: find every existing article with no photo, generate a proper
+    per-article (not just per-category) English search topic for each via a
+    single batched Claude call, then fetch a real Pexels photo for each.
+    Safe to re-run — anything that already has a photo is skipped."""
+    if not cfg.get("pexels_api_key"):
+        print("No pexels_api_key configured — nothing to do.")
+        return
+    paths = sorted(CONTENT_DIR.rglob("*.json"))
+    missing = []
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as f:
+                a = json.load(f)
+        except Exception:
+            continue  # a broken file is build.py's problem, not this script's
+        if not a.get("photo_url"):
+            missing.append((path, a))
+    if not missing:
+        print("Every article already has a photo. Nothing to backfill.")
+        return
+    print(f"{len(missing)} article(s) missing a photo. Generating search topics…")
+
+    queries: dict[str, str] = {}
+    CHUNK = 25  # keep each prompt small and cheap
+    for i in range(0, len(missing), CHUNK):
+        chunk = missing[i:i + CHUNK]
+        lines = "\n".join(
+            f'{j}. {a["headline"]} — tags: {", ".join(a.get("tags", []))}'
+            for j, (_, a) in enumerate(chunk)
+        )
+        prompt = f"""For each numbered article below (title in {cfg['language_name']}), write a
+2-4 word GENERIC stock-photo search topic in English — describing the general
+subject/scene only (e.g. "beekeeping apiary", "football stadium crowd").
+NEVER include a real person's name or a specific claimed place; this is for
+illustrative stock imagery, not a picture of the actual people or event.
+
+Respond with ONLY a JSON object mapping each number to its query string, like:
+{{"0": "beekeeping apiary", "1": "hospital doctor patient"}}
+
+ARTICLES
+{lines}"""
+        try:
+            raw = call_claude(cfg, prompt)
+            text = re.sub(r"^```(?:json)?|```$", "", raw.strip()).strip()
+            start, end = text.find("{"), text.rfind("}")
+            result = json.loads(text[start:end + 1]) if start != -1 else {}
+        except Exception as exc:
+            print(f"  [batch {i}] query generation failed (skipping this batch): {exc}")
+            continue
+        for j, (path, _) in enumerate(chunk):
+            q = result.get(str(j), "")
+            if q:
+                queries[str(path)] = q
+
+    saved, skipped = 0, 0
+    for path, article in missing:
+        query = queries.get(str(path), "")
+        photo = find_stock_photo(cfg, query) if query else None
+        if not photo:
+            skipped += 1
+            continue
+        article.update(photo)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(article, f, ensure_ascii=False, indent=2)
+        saved += 1
+        print(f"  [photo] {article['headline'][:60]} → {query}")
+    print(f"Done. {saved} article(s) got a photo, {skipped} had no match (kept their SVG art).")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Good-news pipeline")
     ap.add_argument("--check-feeds", action="store_true")
     ap.add_argument("--dry", action="store_true", help="list candidates only, no API call")
     ap.add_argument("--limit", type=int, default=None, help="max new stories this run")
+    ap.add_argument("--backfill-photos", action="store_true",
+                     help="one-off: add real Pexels photos to existing articles that don't have one")
     args = ap.parse_args()
 
     cfg = load_config()
     if args.check_feeds:
         check_feeds(cfg)
+        return
+    if args.backfill_photos:
+        backfill_photos(cfg)
         return
 
     seen = load_seen()
