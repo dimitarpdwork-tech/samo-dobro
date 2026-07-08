@@ -57,14 +57,23 @@ def load_config() -> dict:
 
 def load_articles(cfg) -> list[dict]:
     articles = []
+    skipped = []
     if CONTENT.exists():
-        for path in CONTENT.rglob("*.json"):
-            with open(path, encoding="utf-8") as f:
-                a = json.load(f)
-            if a.get("category") not in cfg["categories"]:
-                a["category"] = next(iter(cfg["categories"]))
-            a["_dt"] = datetime.strptime(a["published"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-            articles.append(a)
+        for path in sorted(CONTENT.rglob("*.json")):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    a = json.load(f)
+                if a.get("category") not in cfg["categories"]:
+                    a["category"] = next(iter(cfg["categories"]))
+                a["_dt"] = datetime.strptime(a["published"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                articles.append(a)
+            except Exception as exc:
+                skipped.append((path, exc))
+    if skipped:
+        print(f"\n⚠ {len(skipped)} article file(s) skipped due to errors (site still builds without them):")
+        for path, exc in skipped:
+            print(f"  - {path.relative_to(ROOT)}: {exc}")
+        print("  Fix the file(s) above and re-run to bring these articles back.\n")
     articles.sort(key=lambda a: a["_dt"], reverse=True)
     return articles
 
