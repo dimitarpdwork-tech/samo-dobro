@@ -52,7 +52,7 @@ EN_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "
 
 def load_config() -> dict:
     try:
-        with open(ROOT / "config.json", encoding="utf-8") as f:
+        with open(ROOT / "config.json", encoding="utf-8-sig") as f:
             text = f.read()
     except FileNotFoundError:
         print("ERROR: config.json is missing entirely from the repo root.")
@@ -75,7 +75,7 @@ def load_articles(cfg) -> list[dict]:
     if CONTENT.exists():
         for path in sorted(CONTENT.rglob("*.json")):
             try:
-                with open(path, encoding="utf-8") as f:
+                with open(path, encoding="utf-8-sig") as f:
                     a = json.load(f)
                 if a.get("category") not in cfg["categories"]:
                     a["category"] = next(iter(cfg["categories"]))
