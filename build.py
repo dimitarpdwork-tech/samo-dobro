@@ -204,6 +204,12 @@ footer .fnav{display:flex;gap:18px;flex-wrap:wrap;font-family:var(--fl);font-wei
 footer .fine{color:var(--muted);font-size:.8rem;margin-top:18px}
 .about{max-width:720px;margin:10px auto 44px}
 .about h1{font-family:var(--fd);font-weight:800;font-size:2.1rem;letter-spacing:-.02em}
+.editor-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+padding:20px 22px;margin:20px 0 6px}
+.editor-name{font-family:var(--fd);font-weight:800;font-size:1.15rem}
+.editor-title{font-family:var(--fl);font-weight:700;font-size:.82rem;color:var(--pd);
+text-transform:uppercase;letter-spacing:.05em;margin:2px 0 10px}
+.editor-card p{margin:0;color:var(--muted);line-height:1.65}
 .about h2{font-family:var(--fd);font-weight:800;font-size:1.25rem;margin:26px 0 8px}
 .about p{color:var(--ink);line-height:1.7}
 .nf{text-align:center;padding:70px 0}
@@ -338,6 +344,11 @@ def org_ld(site) -> dict:
             "contactPoint": {"@type": "ContactPoint", "email": cfg["contact_email"],
                               "contactType": "editorial"},
             "sameAs": cfg.get("same_as", [])}
+
+
+def person_ld(site) -> dict:
+    cfg = site.cfg
+    return {"@type": "Person", "name": cfg["editor_name"], "jobTitle": cfg["editor_title"]}
 
 
 def verification_tags(cfg) -> str:
@@ -655,7 +666,7 @@ def build_articles(site) -> None:
               "inLanguage": cfg["lang"], "articleSection": cat["label"],
               "mainEntityOfPage": site.abs_(path),
               "image": [a["photo_url"]] if a.get("photo_url") else [site.abs_("/assets/og-default.png")],
-              "author": org_ld(site), "publisher": org_ld(site)}
+              "author": person_ld(site), "publisher": org_ld(site)}
         if a.get("source_url"):
             ld["isBasedOn"] = a["source_url"]
         write(DIST / path.strip("/") / "index.html",
@@ -694,7 +705,11 @@ def build_about(site) -> None:
     secs = "".join(
         f'<h2>{esc(h)}</h2><p>{esc(t.format(site=cfg["site_name"], email=cfg["contact_email"]))}</p>'
         for h, t in ABOUT[cfg["lang"]])
-    body = f'<div class="about"><h1>{esc(cfg["ui"]["about"])} · {esc(cfg["site_name"])}</h1>{secs}</div>'
+    editor = (f'<div class="editor-card">'
+              f'<div class="editor-name">{esc(cfg["editor_name"])}</div>'
+              f'<div class="editor-title">{esc(cfg["editor_title"])}</div>'
+              f'<p>{esc(cfg["editor_bio"])}</p></div>')
+    body = f'<div class="about"><h1>{esc(cfg["ui"]["about"])} · {esc(cfg["site_name"])}</h1>{editor}{secs}</div>'
     path = f'/{cfg["about_path"]}/'
     write(DIST / cfg["about_path"] / "index.html",
           base_page(site, title=f'{cfg["ui"]["about"]} · {cfg["site_name"]}',
