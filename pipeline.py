@@ -64,13 +64,13 @@ def slugify(text: str, max_len: int = 60) -> str:
 
 
 def load_config() -> dict:
-    with open(ROOT / "config.json", encoding="utf-8") as f:
+    with open(ROOT / "config.json", encoding="utf-8-sig") as f:
         return json.load(f)
 
 
 def load_seen() -> dict:
     if SEEN_FILE.exists():
-        with open(SEEN_FILE, encoding="utf-8") as f:
+        with open(SEEN_FILE, encoding="utf-8-sig") as f:
             return json.load(f)
     return {"ids": []}
 
@@ -155,7 +155,7 @@ def load_recent_headlines(days: int = 10, limit: int = 60) -> list[str]:
     items = []
     for path in CONTENT_DIR.rglob("*.json"):
         try:
-            with open(path, encoding="utf-8") as f:
+            with open(path, encoding="utf-8-sig") as f:
                 a = json.load(f)
             dt = datetime.strptime(a["published"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
             if dt >= cutoff:
@@ -405,7 +405,7 @@ def backfill_photos(cfg: dict) -> None:
     missing = []
     for path in paths:
         try:
-            with open(path, encoding="utf-8") as f:
+            with open(path, encoding="utf-8-sig") as f:
                 a = json.load(f)
         except Exception:
             continue  # a broken file is build.py's problem, not this script's
