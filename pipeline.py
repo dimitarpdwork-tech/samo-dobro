@@ -215,7 +215,8 @@ Respond with ONLY a JSON array (no markdown fences, no commentary). Each element
   "meta_description": "<max 155 characters, in {cfg['language_name']}>",
   "summary_short": "<max 160 characters teaser, in {cfg['language_name']}>",
   "body": "<3-4 short paragraphs separated by \\n\\n, aim for 150-190 words total — this length matters, don't undershoot it, in {cfg['language_name']}>",
-  "tags": ["<3-5 short tags in {cfg['language_name']}, lowercase, single words or hyphenated phrases, NEVER containing spaces>"]
+  "tags": ["<3-5 short tags in {cfg['language_name']}, lowercase, single words or hyphenated phrases, NEVER containing spaces>"],
+  "image_query": "<2-4 words in English, a GENERIC topic/scene for a stock-photo search — e.g. 'beekeeping apiary' or 'football stadium crowd'. NEVER a real person's name or a specific claimed location; this must describe the general subject only, since the photo returned will be illustrative stock imagery, not a picture of the actual people or place in the story>"
 }}
 
 CATEGORY IDS
@@ -283,6 +284,35 @@ def clip(value: str, limit: int) -> str:
     return value if len(value) <= limit else value[: limit - 1].rstrip() + "…"
 
 
+def find_stock_photo(cfg: dict, query: str) -> dict | None:
+    """Look up a genuinely-licensed, generic topical stock photo via Pexels.
+    Returns None (silently) if no key is configured, the query is empty, or the
+    lookup fails for any reason — a missing photo should never break a publish run."""
+    key = cfg.get("pexels_api_key", "")
+    if not key or not query:
+        return None
+    try:
+        resp = requests.get(
+            "https://api.pexels.com/v1/search",
+            params={"query": query, "per_page": 1, "orientation": "landscape"},
+            headers={"Authorization": key},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        photos = resp.json().get("photos", [])
+        if not photos:
+            return None
+        p = photos[0]
+        return {
+            "photo_url": p["src"]["large"],
+            "photo_credit": p.get("photographer", "Pexels"),
+            "photo_credit_url": p.get("photographer_url") or p.get("url", "https://www.pexels.com"),
+        }
+    except Exception as exc:
+        print(f"  [photo] lookup failed for '{query}' (non-fatal): {exc}")
+        return None
+
+
 def save_articles(cfg: dict, items: list[dict], candidates: list[dict], seen: dict) -> tuple[int, list[str]]:
     now = datetime.now(timezone.utc)
     default_cat = next(iter(cfg["categories"]))
@@ -316,6 +346,9 @@ def save_articles(cfg: dict, items: list[dict], candidates: list[dict], seen: di
             "published": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "lang": cfg["lang"],
         }
+        photo = find_stock_photo(cfg, item.get("image_query", ""))
+        if photo:
+            article.update(photo)
         out_dir = CONTENT_DIR / now.strftime("%Y") / now.strftime("%m")
         out_dir.mkdir(parents=True, exist_ok=True)
         with open(out_dir / f"{slug}.json", "w", encoding="utf-8") as f:
