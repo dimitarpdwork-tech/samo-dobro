@@ -9,6 +9,10 @@ on:
         description: "One-off: add real photos to existing articles that don't have one yet (instead of publishing new stories)"
         type: boolean
         default: false
+      check_feeds:
+        description: "One-off: just test every RSS feed and report which work (no publishing)"
+        type: boolean
+        default: false
   push:
     branches: [main]              # deploys design/content edits without the AI step
 
@@ -37,8 +41,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Test all RSS feeds (one-off)
+        if: github.event.inputs.check_feeds == 'true'
+        run: python pipeline.py --check-feeds
+
       - name: Fetch and write new stories (AI pipeline)
-        if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true'
+        if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true' && github.event.inputs.check_feeds != 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python pipeline.py
