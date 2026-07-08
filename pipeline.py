@@ -214,7 +214,7 @@ Respond with ONLY a JSON array (no markdown fences, no commentary). Each element
   "category": "<one id from the category list below>",
   "meta_description": "<max 155 characters, in {cfg['language_name']}>",
   "summary_short": "<max 160 characters teaser, in {cfg['language_name']}>",
-  "body": "<2-3 short paragraphs separated by \\n\\n, 90-170 words total, in {cfg['language_name']}>",
+  "body": "<3-4 short paragraphs separated by \\n\\n, aim for 150-190 words total — this length matters, don't undershoot it, in {cfg['language_name']}>",
   "tags": ["<3-5 short tags in {cfg['language_name']}, lowercase, single words or hyphenated phrases, NEVER containing spaces>"]
 }}
 
@@ -283,10 +283,12 @@ def clip(value: str, limit: int) -> str:
     return value if len(value) <= limit else value[: limit - 1].rstrip() + "…"
 
 
-def save_articles(cfg: dict, items: list[dict], candidates: list[dict], seen: dict) -> int:
+def save_articles(cfg: dict, items: list[dict], candidates: list[dict], seen: dict) -> tuple[int, list[str]]:
     now = datetime.now(timezone.utc)
     default_cat = next(iter(cfg["categories"]))
     saved = 0
+    new_urls = []
+    base = cfg["base_url"].rstrip("/") + cfg.get("base_path", "").rstrip("/")
     for item in items:
         try:
             cand = candidates[int(item["candidate"])]
@@ -320,8 +322,29 @@ def save_articles(cfg: dict, items: list[dict], candidates: list[dict], seen: di
             json.dump(article, f, ensure_ascii=False, indent=2)
         seen["ids"].append(cand["id"])
         saved += 1
+        new_urls.append(f'{base}/{cfg["article_prefix"]}/{slug}/')
         print(f"  [new] {headline}")
-    return saved
+    return saved, new_urls
+
+
+def ping_indexnow(cfg: dict, urls: list[str]) -> None:
+    """Tell Bing/Yandex/Naver about new URLs immediately instead of waiting to be crawled.
+    No-op if indexnow_key isn't set in config.json. Never fails the run — this is a nicety,
+    not a requirement."""
+    key = cfg.get("indexnow_key", "")
+    if not key or not urls:
+        return
+    host = cfg["base_url"].rstrip("/").split("//", 1)[-1]
+    key_location = f'{cfg["base_url"].rstrip("/")}{cfg.get("base_path", "")}/{key}.txt'
+    try:
+        resp = requests.post(
+            "https://api.indexnow.org/indexnow",
+            json={"host": host, "key": key, "keyLocation": key_location, "urlList": urls},
+            timeout=15,
+        )
+        print(f"  [indexnow] pinged {len(urls)} URL(s) — HTTP {resp.status_code}")
+    except Exception as exc:
+        print(f"  [indexnow] ping failed (non-fatal): {exc}")
 
 
 def check_feeds(cfg: dict) -> None:
@@ -369,7 +392,8 @@ def main() -> None:
     print("  asking the editor model to pick the good ones…")
     raw = call_claude(cfg, prompt)
     items = parse_selection(raw)[:max_new]
-    saved = save_articles(cfg, items, candidates, seen)
+    saved, new_urls = save_articles(cfg, items, candidates, seen)
+    ping_indexnow(cfg, new_urls)
 
     # Mark rejected candidates as seen too, so we never re-pay to re-judge them.
     for c in candidates:
