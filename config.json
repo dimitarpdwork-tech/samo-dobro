@@ -82,14 +82,11 @@
     "sport": { "label": "Спорт", "emoji": "⚽", "c1": "#F3722C", "c2": "#F9A26C", "intro": "Успехи на български спортисти и отбори, моменти на воля и постижение, които карат цялата страна да се гордее." },
     "ikonomika": { "label": "Икономика", "emoji": "🌾", "c1": "#0FA3A3", "c2": "#7ED4D4", "intro": "Добри новини за българската икономика — растеж, иновации и примери, че бизнесът може да бъде и отговорен." }
   },
-  "feeds": [
-    { "name": "БТА",        "url": "https://www.bta.bg/bg/rss/free" },
-    { "name": "Дневник",    "url": "https://www.dnevnik.bg/rss/" },
-    { "name": "Mediapool",  "url": "https://www.mediapool.bg/rss/mediapool.xml" },
-    { "name": "OFFNews",    "url": "https://offnews.bg/rss" },
-    { "name": "БНР",        "url": "https://bnr.bg/rss" },
-    { "name": "Actualno",   "url": "https://www.actualno.com/rss" },
-    { "name": "БНТ Новини", "url": "https://bntnews.bg/rss" },
-    { "name": "Novinite (EN)", "url": "https://www.novinite.com/services/news_rdf.php" }
-  ]
+ "feeds": [
+  { "name": "БТА",       "url": "https://www.bta.bg/bg/rss/free" },
+  { "name": "Дневник",   "url": "https://www.dnevnik.bg/rss/" },
+  { "name": "Actualno",  "url": "https://www.actualno.com/rss" },
+  { "name": "24 часа",   "url": "https://www.24chasa.bg/rss" },
+  { "name": "Pogled.info", "url": "https://pogled.info/rss" }
+]
 }
