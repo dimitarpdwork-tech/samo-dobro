@@ -165,6 +165,10 @@ body.brand-globe .sec .rule{height:2px;background:linear-gradient(90deg,var(--t)
 display:flex;flex-direction:column;transition:transform .18s,box-shadow .18s}
 .card:hover{transform:translateY(-4px);box-shadow:0 14px 30px rgba(20,40,60,.10)}
 .card .thumb{display:block;line-height:0}
+.thumb{position:relative;overflow:hidden;background:var(--line)}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-credit{position:absolute;right:6px;bottom:5px;font-family:var(--fl);font-size:.66rem;
+color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:999px;text-decoration:none}
 .cbody{padding:16px 18px 18px;display:flex;flex-direction:column;gap:9px;flex:1}
 .cbody h3{font-family:var(--fd);font-weight:800;font-size:1.13rem;line-height:1.28;margin:0;letter-spacing:-.01em}
 .cbody p{margin:0;color:var(--muted);font-size:.94rem}
@@ -289,6 +293,18 @@ def card_art(cfg, article, height=180) -> str:
             f'<rect width="640" height="320" fill="url(#{gid})"/>{circles}'
             f'<circle cx="320" cy="160" r="64" fill="#fff" opacity=".28"/>'
             f'<text x="320" y="160" font-size="72" text-anchor="middle" dominant-baseline="central">{cat["emoji"]}</text></svg>')
+
+
+def media(cfg, article, ui, height=180) -> str:
+    """Real stock photo when the pipeline found one, generated SVG art otherwise.
+    Photo credit is a hard requirement of the free API's terms, not optional."""
+    if article.get("photo_url"):
+        credit = (f'<a class="photo-credit" href="{esc(article["photo_credit_url"])}" '
+                  f'target="_blank" rel="noopener">{esc(ui["photo_by"])} {esc(article["photo_credit"])} · Pexels</a>')
+        return (f'<div class="thumb" style="height:{height}px">'
+                f'<img src="{esc(article["photo_url"])}" alt="{esc(article["headline"])}" loading="lazy">'
+                f'{credit}</div>')
+    return card_art(cfg, article, height)
 
 
 # ------------------------------------------------------------ helpers -----
@@ -425,7 +441,7 @@ def base_page(site, *, title, description, path, body, jsonld=None, og_type="web
 <meta property="og:title" content="{esc(title)}">
 <meta property="og:description" content="{esc(description)}">
 <meta property="og:url" content="{site.abs_(path)}">
-<meta property="og:image" content="{site.abs_(og_image)}">
+<meta property="og:image" content="{og_image if og_image.startswith('http') else site.abs_(og_image)}">
 <meta property="og:locale" content="{cfg['locale']}">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="{site.u('/assets/favicon.svg')}" type="image/svg+xml">
@@ -500,7 +516,7 @@ def meta_row(site, a, with_cat=True) -> str:
 def card(site, a) -> str:
     href = site.u(site.article_path(a))
     return f"""<article class="card">
-<a href="{href}" aria-label="{esc(a['headline'])}">{card_art(site.cfg, a)}</a>
+<a href="{href}" aria-label="{esc(a['headline'])}">{media(site.cfg, a, site.cfg['ui'])}</a>
 <div class="cbody">
 <h3><a href="{href}">{esc(a['headline'])}</a></h3>
 <p>{esc(a['summary_short'])}</p>
@@ -626,7 +642,7 @@ def build_articles(site) -> None:
 {meta_row(site, a)}
 <h1>{esc(a['headline'])}</h1>
 <span class="ai-badge">{esc(ui['ai_badge'])}</span>
-<div class="banner">{card_art(cfg, a, height=250)}</div>
+<div class="banner">{media(cfg, a, ui, height=250)}</div>
 <div class="body">{paras}</div>
 {f'<div class="tags">{tags}</div>' if tags else ''}
 {src}
@@ -640,14 +656,15 @@ def build_articles(site) -> None:
               "datePublished": a["published"], "dateModified": a["published"],
               "inLanguage": cfg["lang"], "articleSection": cat["label"],
               "mainEntityOfPage": site.abs_(path),
-              "image": [site.abs_("/assets/og-default.png")],
+              "image": [a["photo_url"]] if a.get("photo_url") else [site.abs_("/assets/og-default.png")],
               "author": org_ld(site), "publisher": org_ld(site)}
         if a.get("source_url"):
             ld["isBasedOn"] = a["source_url"]
         write(DIST / path.strip("/") / "index.html",
               base_page(site, title=f'{a["headline"]} · {cfg["site_name"]}',
                         description=a["meta_description"] or a["summary_short"],
-                        path=path, body=body, jsonld=[ld, breadcrumb_ld(site, crumbs)], og_type="article"))
+                        path=path, body=body, jsonld=[ld, breadcrumb_ld(site, crumbs)], og_type="article",
+                        og_image=a.get("photo_url", "/assets/og-default.png")))
 
 
 ABOUT = {
