@@ -147,7 +147,26 @@ def collect_candidates(cfg: dict, seen_ids: set) -> list[dict]:
     return candidates[:60]
 
 
-def build_prompt(cfg: dict, candidates: list[dict], max_new: int) -> str:
+def load_recent_headlines(days: int = 10, limit: int = 60) -> list[str]:
+    """Headlines from recently published articles, newest first, for duplicate-topic checks."""
+    if not CONTENT_DIR.exists():
+        return []
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    items = []
+    for path in CONTENT_DIR.rglob("*.json"):
+        try:
+            with open(path, encoding="utf-8") as f:
+                a = json.load(f)
+            dt = datetime.strptime(a["published"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            if dt >= cutoff:
+                items.append((dt, a.get("headline", "")))
+        except Exception:
+            continue
+    items.sort(key=lambda x: x[0], reverse=True)
+    return [h for _, h in items[:limit]]
+
+
+def build_prompt(cfg: dict, candidates: list[dict], max_new: int, recent_headlines: list[str]) -> str:
     cat_lines = "\n".join(
         f'- "{cid}": {c["label"]}' for cid, c in cfg["categories"].items()
     )
@@ -155,6 +174,14 @@ def build_prompt(cfg: dict, candidates: list[dict], max_new: int) -> str:
         f'{i}. [{c["source"]}] {c["title"]} — {c["summary"] or "(no summary)"}'
         for i, c in enumerate(candidates)
     )
+    recent_block = ""
+    if recent_headlines:
+        recent_list = "\n".join(f"- {h}" for h in recent_headlines[:60])
+        recent_block = f"""
+ALREADY PUBLISHED — DO NOT DUPLICATE
+These headlines were already published recently. If a candidate below covers the same real-world event or story as any of these (even from a different source outlet), REJECT it rather than writing it again:
+{recent_list}
+"""
     return f"""You are the sole editor of "{cfg['site_name']}", a news site that publishes ONLY genuinely good, uplifting news, written in {cfg['language_name']}.
 
 Below is a numbered list of raw news candidates pulled from RSS feeds.
@@ -163,12 +190,20 @@ YOUR TASK
 1. Select at most {max_new} candidates that are GENUINELY positive: concrete good outcomes, kindness, recoveries of nature, scientific or medical breakthroughs, community wins, cultural achievements, records of human generosity or skill.
 2. REJECT anything whose core is negative even if framed positively: war, crime, accidents, disasters, deaths, disease outbreaks, scandals, court cases, party politics, election results, celebrity gossip, advertising/PR, financial speculation. When in doubt, reject. Selecting zero is a valid answer.
 3. For each selected story, write an ORIGINAL article in {cfg['language_name']}.
-
+{recent_block}
 STRICT WRITING RULES
 - Use ONLY facts present in the candidate's title/summary above. Never invent numbers, names, quotes, dates or details. If the snippet is too thin to write 2 short paragraphs honestly, reject it.
 - Write completely in your own words. Do not copy or closely paraphrase the source phrasing.
 - Tone: warm, human, concrete. Hopeful but never saccharine or clickbaity.
 - The reader should finish the story feeling lighter.
+
+LANGUAGE QUALITY BAR — THIS IS NON-NEGOTIABLE
+- Write in fully correct, natural, native-level {cfg['language_name']}, as a professional native-speaking editor would.
+- NEVER invent a word that does not exist in {cfg['language_name']}. If you are not completely certain a word is real and correctly spelled, use a simpler word you are certain of instead.
+- Check every noun-adjective pair for correct grammatical gender/number agreement before finalizing (this is a common failure point — verify it explicitly).
+- Do not borrow spellings or vocabulary from a closely related language (e.g. when writing Bulgarian, never use Russian spellings or words — the two are related but distinct, and mixing them is a real, disqualifying error).
+- After drafting each article, re-read it once specifically to check for grammar and invented words before including it in your output. If any sentence feels uncertain, simplify it rather than risk an error.
+- Respectful, neutral phrasing for gender and identity: describe achievements plainly (e.g. "first woman [role]") — never use a gendered adjective to modify a person's professional title or role in a way that could read as diminishing.
 
 OUTPUT FORMAT
 Respond with ONLY a JSON array (no markdown fences, no commentary). Each element:
@@ -180,7 +215,7 @@ Respond with ONLY a JSON array (no markdown fences, no commentary). Each element
   "meta_description": "<max 155 characters, in {cfg['language_name']}>",
   "summary_short": "<max 160 characters teaser, in {cfg['language_name']}>",
   "body": "<2-3 short paragraphs separated by \\n\\n, 90-170 words total, in {cfg['language_name']}>",
-  "tags": ["<3-5 short lowercase tags in {cfg['language_name']}>"]
+  "tags": ["<3-5 short tags in {cfg['language_name']}, lowercase, single words or hyphenated phrases, NEVER containing spaces>"]
 }}
 
 CATEGORY IDS
@@ -329,7 +364,8 @@ def main() -> None:
         return
 
     max_new = args.limit or cfg.get("max_new_per_run", 6)
-    prompt = build_prompt(cfg, candidates, max_new)
+    recent_headlines = load_recent_headlines()
+    prompt = build_prompt(cfg, candidates, max_new, recent_headlines)
     print("  asking the editor model to pick the good ones…")
     raw = call_claude(cfg, prompt)
     items = parse_selection(raw)[:max_new]
