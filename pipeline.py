@@ -82,7 +82,7 @@ def save_seen(seen: dict) -> None:
         json.dump(seen, f, ensure_ascii=False, indent=0)
 
 
-def clean_text(raw: str, limit: int = 450) -> str:
+def clean_text(raw: str, limit: int = 1450) -> str:
     """Strip HTML tags/entities from a feed snippet and clip it."""
     text = re.sub(r"<[^>]+>", " ", raw or "")
     text = html.unescape(text)
