@@ -24,12 +24,12 @@
   "max_new_per_run": 10,
   "window_hours": 24,
   "fonts": {
-  "display": "'Fraunces', Georgia, serif",
-  "body": "'Karla', system-ui, sans-serif",
-  "label": "'Karla', system-ui, sans-serif",
+  "display": "'Sofia Sans', system-ui, sans-serif",
+  "body": "'Sofia Sans', system-ui, sans-serif",
+  "label": "'Sofia Sans Condensed', system-ui, sans-serif",
   "faces": [
-    { "family": "Fraunces", "weight": "400", "file": "fraunces-400.woff2" },
-    { "family": "Karla", "weight": "400", "file": "karla-400.woff2" }
+    { "family": "Sofia Sans", "weight": "400", "file": "sofia-sans-400.woff2" },
+    { "family": "Sofia Sans Condensed", "weight": "400", "file": "sofia-sans-condensed-400.woff2" }
   ]
 },
   "colors": {
