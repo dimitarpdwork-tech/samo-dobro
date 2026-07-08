@@ -82,7 +82,7 @@ def save_seen(seen: dict) -> None:
         json.dump(seen, f, ensure_ascii=False, indent=0)
 
 
-def clean_text(raw: str, limit: int = 1450) -> str:
+def clean_text(raw: str, limit: int = 450) -> str:
     """Strip HTML tags/entities from a feed snippet and clip it."""
     text = re.sub(r"<[^>]+>", " ", raw or "")
     text = html.unescape(text)
@@ -263,6 +263,37 @@ def call_claude(cfg: dict, prompt: str) -> str:
     sys.exit(1)
 
 
+def _split_top_level_objects(text: str) -> list[str]:
+    """Scan array text and return each top-level {...} object as a raw string,
+    respecting string boundaries so a brace inside a text value can't confuse it."""
+    objects = []
+    depth = 0
+    start = None
+    in_string = False
+    escape = False
+    for i, ch in enumerate(text):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start is not None:
+                objects.append(text[start : i + 1])
+                start = None
+    return objects
+
+
 def parse_selection(raw: str) -> list[dict]:
     text = raw.strip()
     text = re.sub(r"^```(?:json)?", "", text).strip()
@@ -271,12 +302,27 @@ def parse_selection(raw: str) -> list[dict]:
     if start == -1 or end == -1:
         print("  [parse] no JSON array in model output — treating as zero selections.")
         return []
+    array_text = text[start : end + 1]
     try:
-        items = json.loads(text[start : end + 1])
+        items = json.loads(array_text)
+        return items if isinstance(items, list) else []
     except json.JSONDecodeError as exc:
-        print(f"  [parse] JSON error: {exc} — treating as zero selections.")
-        return []
-    return items if isinstance(items, list) else []
+        print(f"  [parse] JSON error in the full batch ({exc}) — recovering stories "
+              f"one by one instead of discarding all of them…")
+
+    # Recovery path: parse each {...} object independently, so one story with a
+    # stray unescaped quote doesn't cost every good story in the same batch.
+    recovered, failed = [], 0
+    for obj_text in _split_top_level_objects(array_text):
+        try:
+            recovered.append(json.loads(obj_text))
+        except json.JSONDecodeError:
+            failed += 1
+    if recovered:
+        print(f"  [parse] recovered {len(recovered)} of {len(recovered) + failed} stories individually")
+    else:
+        print("  [parse] could not recover any stories from this batch.")
+    return recovered
 
 
 def clip(value: str, limit: int) -> str:
