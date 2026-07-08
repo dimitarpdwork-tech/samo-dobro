@@ -16,7 +16,7 @@
 "ga4_measurement_id": "G-2VMV8DMTLD",
 "adsense_client_id": "",
   "contact_email": "vivatelmania@gmail.com",
-  "model": "claude-haiku-4-5-20251001",
+  "model": "claude-sonnet-5",
   "max_new_per_run": 10,
   "window_hours": 24,
   "fonts": {
