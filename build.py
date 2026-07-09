@@ -202,6 +202,8 @@ line-height:1.14;letter-spacing:-.02em;margin:10px 0 14px}
 .ai-badge{display:inline-block;font-family:var(--fl);font-size:.72rem;font-weight:700;
 letter-spacing:.04em;color:var(--muted);background:var(--card);border:1px solid var(--line);
 border-radius:999px;padding:4px 11px;margin:0 0 14px}
+.byline{display:inline-block;font-family:var(--fl);font-size:.85rem;font-weight:700;
+color:var(--pd);margin:0 10px 14px 0}
 .cat-name{color:var(--pd);font-weight:700;border-bottom:2px dotted var(--p);cursor:pointer;
 padding:0 1px}
 .cat-name.found{color:var(--t);border-bottom-style:solid}
@@ -330,14 +332,17 @@ def card_art(cfg, article, height=180) -> str:
             f'<text x="320" y="160" font-size="72" text-anchor="middle" dominant-baseline="central">{cat["emoji"]}</text></svg>')
 
 
-def media(cfg, article, ui, height=180) -> str:
+def media(cfg, article, ui, height=180, eager=False) -> str:
     """Real stock photo when the pipeline found one, generated SVG art otherwise.
-    Photo credit is a hard requirement of the free API's terms, not optional."""
+    Photo credit is a hard requirement of the free API's terms, not optional.
+    eager=True skips lazy-loading — use this only for the one above-the-fold
+    image per page (the article's own banner), never for listing thumbnails."""
     if article.get("photo_url"):
         credit = (f'<a class="photo-credit" href="{esc(article["photo_credit_url"])}" '
                   f'target="_blank" rel="noopener">{esc(ui.get("photo_by", "Photo:"))} {esc(article["photo_credit"])} · Pexels</a>')
+        loading_attr = '' if eager else ' loading="lazy"'
         return (f'<div class="thumb" style="height:{height}px">'
-                f'<img src="{esc(article["photo_url"])}" alt="{esc(article["headline"])}" loading="lazy">'
+                f'<img src="{esc(article["photo_url"])}" alt="{esc(article["headline"])}"{loading_attr}>'
                 f'{credit}</div>')
     return card_art(cfg, article, height)
 
@@ -367,7 +372,7 @@ class Site:
 def org_ld(site) -> dict:
     cfg = site.cfg
     return {"@type": "Organization", "name": cfg["site_name"], "url": site.abs_("/"),
-            "logo": {"@type": "ImageObject", "url": site.abs_("/assets/og-default.png")},
+            "logo": {"@type": "ImageObject", "url": site.abs_("/assets/apple-touch-icon.png")},
             "foundingDate": cfg.get("founding_date", "2026-07-01"),
             "contactPoint": {"@type": "ContactPoint", "email": cfg["contact_email"],
                               "contactType": "editorial"},
@@ -485,6 +490,7 @@ def base_page(site, *, title, description, path, body, jsonld=None, og_type="web
 <meta property="og:url" content="{site.abs_(path)}">
 <meta property="og:image" content="{og_image if og_image.startswith('http') else site.abs_(og_image)}">
 <meta property="og:locale" content="{cfg['locale']}">
+{('<link rel="preconnect" href="https://images.pexels.com">' if cfg.get('pexels_api_key') else '')}
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="{site.u('/assets/favicon.svg')}" type="image/svg+xml">
 <link rel="icon" href="{site.u('/assets/favicon.png')}" sizes="64x64">
@@ -655,13 +661,17 @@ def build_lists(site) -> None:
             elif key != "home":
                 cat = cfg["categories"][key]
                 crumbs = [(ui["home"], site.abs_("/")), (cat["label"], site.abs_(site.cat_path(key)))]
+                item_list = {"@type": "ItemList", "itemListElement": [
+                    {"@type": "ListItem", "position": i + 1, "url": site.abs_(site.article_path(a))}
+                    for i, a in enumerate(chunk)
+                ]}
                 jsonld = [
                     breadcrumb_ld(site, crumbs),
                     {"@context": "https://schema.org", "@type": "CollectionPage",
                      "name": f'{cat["label"]} · {cfg["site_name"]}',
                      "description": intro or desc, "url": site.abs_(site.cat_path(key)),
                      "isPartOf": {"@type": "WebSite", "name": cfg["site_name"], "url": site.abs_("/")},
-                     "inLanguage": cfg["lang"]}
+                     "inLanguage": cfg["lang"], "mainEntity": item_list}
                 ]
             path = base_path if p == 1 else f'{base_path}page/{p}/'
             out = DIST / path.strip("/") / "index.html" if path != "/" else DIST / "index.html"
@@ -735,8 +745,9 @@ def build_articles(site) -> None:
 <a class="backlink" href="{site.u('/')}">← {esc(ui['back_home'])}</a>
 {meta_row(site, a)}
 <h1>{esc(a['headline'])}</h1>
+{f'<span class="byline">{esc(ui.get("editor_label", "Editor:"))} {esc(cfg["editor_name"])}</span>' if cfg.get('editor_name') else ''}
 {f'<span class="ai-badge">{esc(ui.get("ai_badge", "AI-summarized"))}</span>' if not a.get('no_ai_badge') else ''}
-<div class="banner">{media(cfg, a, ui, height=250)}</div>
+<div class="banner">{media(cfg, a, ui, height=250, eager=True)}</div>
 <div class="body">{paras}</div>
 {f'<div class="tags">{tags}</div>' if tags else ''}
 {src}
