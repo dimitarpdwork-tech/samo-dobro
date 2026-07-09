@@ -602,6 +602,18 @@ def breadcrumb_ld(site, crumbs: list[tuple[str, str]]) -> dict:
 
 def build_lists(site) -> None:
     cfg, ui = site.cfg, site.cfg["ui"]
+    now = datetime.now(timezone.utc)
+    pinned = None
+    for a in site.articles:
+        pin_until = a.get("pin_until")
+        if pin_until:
+            try:
+                until_dt = datetime.strptime(pin_until, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                if now < until_dt:
+                    pinned = a
+                    break  # site.articles is newest-first; first active pin wins
+            except Exception:
+                pass
     groups = [("home", "/", site.articles, cfg["description"], cfg["site_name"] + " — " + cfg["tagline"], "")]
     for cid, cat in cfg["categories"].items():
         arts = [a for a in site.articles if a["category"] == cid]
@@ -616,8 +628,9 @@ def build_lists(site) -> None:
             body = ""
             rest = chunk
             if key == "home" and p == 1 and chunk:
-                body += hero(site, chunk[0])
-                rest = chunk[1:]
+                hero_article = pinned if pinned else chunk[0]
+                body += hero(site, hero_article)
+                rest = [a for a in chunk if a["slug"] != hero_article["slug"]]
             label = ui["latest"] if key == "home" else f'{cfg["categories"][key]["emoji"]} {cfg["categories"][key]["label"]}'
             body += f'<div class="sec"><h2>{esc(label)}</h2><span class="rule"></span></div>'
             if intro and p == 1:
@@ -671,7 +684,7 @@ def build_articles(site) -> None:
 <a class="backlink" href="{site.u('/')}">← {esc(ui['back_home'])}</a>
 {meta_row(site, a)}
 <h1>{esc(a['headline'])}</h1>
-<span class="ai-badge">{esc(ui.get('ai_badge', 'AI-summarized'))}</span>
+{f'<span class="ai-badge">{esc(ui.get("ai_badge", "AI-summarized"))}</span>' if not a.get('no_ai_badge') else ''}
 <div class="banner">{media(cfg, a, ui, height=250)}</div>
 <div class="body">{paras}</div>
 {f'<div class="tags">{tags}</div>' if tags else ''}
