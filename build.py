@@ -26,6 +26,7 @@ Run:  python build.py
 import hashlib
 import html
 import json
+import re
 import shutil
 from datetime import datetime, timezone
 from email.utils import format_datetime
@@ -201,6 +202,14 @@ line-height:1.14;letter-spacing:-.02em;margin:10px 0 14px}
 .ai-badge{display:inline-block;font-family:var(--fl);font-size:.72rem;font-weight:700;
 letter-spacing:.04em;color:var(--muted);background:var(--card);border:1px solid var(--line);
 border-radius:999px;padding:4px 11px;margin:0 0 14px}
+.cat-name{color:var(--pd);font-weight:700;border-bottom:2px dotted var(--p);cursor:pointer;
+padding:0 1px}
+.cat-name.found{color:var(--t);border-bottom-style:solid}
+.cat-poem{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+padding:22px 26px;margin:24px 0;animation:catpoem-in .5s ease}
+.cat-poem p{font-family:var(--fd);font-style:italic;color:var(--ink);line-height:1.9;
+margin:0 0 1em;text-align:center}
+@keyframes catpoem-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 .article .banner{border-radius:var(--r);overflow:hidden;margin:20px 0;line-height:0;border:1px solid var(--line)}
 .article .body p{font-size:1.07rem;line-height:1.75;margin:0 0 1.2em}
 .tags{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}
@@ -661,11 +670,53 @@ def build_lists(site) -> None:
                                  noindex=(p > 1), is_home=(key == "home" and p == 1)))
 
 
+def apply_cat_unlock(paras_html: str, unlock: dict) -> str:
+    """Wrap the first mention of each cat name in the article with a tappable
+    span. Tapping all of them (any order) reveals the hidden poem below."""
+    for name in unlock.get("names", []):
+        pattern = re.compile(rf'(?<![\w-])({re.escape(name)})(?![\w-])')
+        paras_html = pattern.sub(
+            lambda m, n=name: f'<span class="cat-name" data-cat="{esc(n)}" role="button" tabindex="0">{m.group(1)}</span>',
+            paras_html, count=1,
+        )
+    return paras_html
+
+
+def cat_unlock_block(unlock: dict) -> str:
+    stanzas = "".join(
+        f"<p>{'<br>'.join(esc(line) for line in stanza.split(chr(10)) if line.strip())}</p>"
+        for stanza in unlock["poem"].split("\n\n") if stanza.strip()
+    )
+    return f"""<div class="cat-poem" id="cat-poem" hidden>{stanzas}</div>
+<script>
+(function(){{
+  var found = new Set();
+  var total = {len(unlock.get("names", []))};
+  var poem = document.getElementById('cat-poem');
+  document.querySelectorAll('.cat-name').forEach(function(s){{
+    function reveal(){{
+      found.add(s.dataset.cat);
+      s.classList.add('found');
+      if (found.size >= total && poem) {{
+        poem.hidden = false;
+        poem.scrollIntoView({{behavior:'smooth', block:'center'}});
+      }}
+    }}
+    s.addEventListener('click', reveal);
+    s.addEventListener('keydown', function(e){{ if (e.key==='Enter'||e.key===' ') reveal(); }});
+  }});
+}})();
+</script>"""
+
+
 def build_articles(site) -> None:
     cfg, ui = site.cfg, site.cfg["ui"]
     for a in site.articles:
         cat = cfg["categories"][a["category"]]
         paras = "".join(f"<p>{esc(p.strip())}</p>" for p in a["body"].split("\n\n") if p.strip())
+        cat_unlock = a.get("cat_unlock")
+        if cat_unlock:
+            paras = apply_cat_unlock(paras, cat_unlock)
         related = [r for r in site.articles if r["category"] == a["category"] and r["slug"] != a["slug"]][:3]
         if len(related) < 3:
             seen = {r["slug"] for r in related} | {a["slug"]}
@@ -689,6 +740,7 @@ def build_articles(site) -> None:
 <div class="body">{paras}</div>
 {f'<div class="tags">{tags}</div>' if tags else ''}
 {src}
+{cat_unlock_block(cat_unlock) if cat_unlock else ''}
 </article>
 {rel_html}"""
         path = site.article_path(a)
