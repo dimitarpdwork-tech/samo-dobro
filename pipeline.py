@@ -509,6 +509,18 @@ ARTICLES
     print(f"Done. {saved} article(s) got a photo, {skipped} had no match (kept their SVG art).")
 
 
+def recently_ran(hours: float = 2.0) -> bool:
+    """True if a run already completed within the cooldown window. Guards against
+    near-simultaneous duplicate triggers — e.g. the native GitHub schedule and the
+    cron-job.org backup both firing for the same intended moment — causing the same
+    slot to publish twice. Real scheduled slots are 6 hours apart, so a 2-hour
+    cooldown catches duplicates without ever blocking a genuinely later run."""
+    if not SEEN_FILE.exists():
+        return False
+    age = datetime.now(timezone.utc) - datetime.fromtimestamp(SEEN_FILE.stat().st_mtime, tz=timezone.utc)
+    return age < timedelta(hours=hours)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Good-news pipeline")
     ap.add_argument("--check-feeds", action="store_true")
@@ -516,6 +528,7 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=None, help="max new stories this run")
     ap.add_argument("--backfill-photos", action="store_true",
                      help="one-off: add real Pexels photos to existing articles that don't have one")
+    ap.add_argument("--force", action="store_true", help="skip the duplicate-trigger cooldown check")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -524,6 +537,12 @@ def main() -> None:
         return
     if args.backfill_photos:
         backfill_photos(cfg)
+        return
+    if not args.force and not args.dry and recently_ran():
+        print("A run already completed within the last 2 hours — this looks like a "
+              "duplicate trigger (e.g. the scheduled run and the cron-job.org backup "
+              "both firing for the same moment), not a genuinely new slot. Skipping "
+              "to avoid publishing the same window twice. Use --force to override.")
         return
 
     seen = load_seen()
