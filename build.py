@@ -72,11 +72,16 @@ def load_config() -> dict:
 def load_articles(cfg) -> list[dict]:
     articles = []
     skipped = []
+    now = datetime.now(timezone.utc)
     if CONTENT.exists():
         for path in sorted(CONTENT.rglob("*.json")):
             try:
                 with open(path, encoding="utf-8-sig") as f:
                     a = json.load(f)
+                if a.get("publish_at"):
+                    embargo = datetime.strptime(a["publish_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                    if now < embargo:
+                        continue  # not time yet — invisible to this build, will appear on its own later
                 if a.get("category") not in cfg["categories"]:
                     a["category"] = next(iter(cfg["categories"]))
                 a["_dt"] = datetime.strptime(a["published"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
