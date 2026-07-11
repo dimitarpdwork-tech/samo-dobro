@@ -77,6 +77,7 @@ def load_seen() -> dict:
 
 def save_seen(seen: dict) -> None:
     seen["ids"] = seen["ids"][-4000:]  # keep the file small
+    seen["last_run"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     SEEN_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(SEEN_FILE, "w", encoding="utf-8") as f:
         json.dump(seen, f, ensure_ascii=False, indent=0)
@@ -510,15 +511,24 @@ ARTICLES
 
 
 def recently_ran(hours: float = 2.0) -> bool:
-    """True if a run already completed within the cooldown window. Guards against
-    near-simultaneous duplicate triggers — e.g. the native GitHub schedule and the
-    cron-job.org backup both firing for the same intended moment — causing the same
-    slot to publish twice. Real scheduled slots are 6 hours apart, so a 2-hour
-    cooldown catches duplicates without ever blocking a genuinely later run."""
-    if not SEEN_FILE.exists():
-        return False
-    age = datetime.now(timezone.utc) - datetime.fromtimestamp(SEEN_FILE.stat().st_mtime, tz=timezone.utc)
-    return age < timedelta(hours=hours)
+    """True if a publishing run completed within the cooldown window, judged by the
+    last_run timestamp stored INSIDE seen.json — never by file modification times.
+    (Mtimes are meaningless in CI: actions/checkout rewrites every file's mtime to
+    'right now' on every run, which made the original mtime-based version of this
+    check wrongly skip 100% of runs.) Guards against near-simultaneous duplicate
+    triggers — the GitHub schedule and the cron-job.org backup firing for the same
+    slot. Never blocks manually triggered runs (handled in main)."""
+    try:
+        if not SEEN_FILE.exists():
+            return False
+        with open(SEEN_FILE, encoding="utf-8-sig") as f:
+            last_run = json.load(f).get("last_run")
+        if not last_run:
+            return False
+        last = datetime.strptime(last_run, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) - last < timedelta(hours=hours)
+    except Exception:
+        return False  # the safety guard must never itself block publishing
 
 
 def main() -> None:
@@ -538,11 +548,15 @@ def main() -> None:
     if args.backfill_photos:
         backfill_photos(cfg)
         return
-    if not args.force and not args.dry and recently_ran():
-        print("A run already completed within the last 2 hours — this looks like a "
-              "duplicate trigger (e.g. the scheduled run and the cron-job.org backup "
-              "both firing for the same moment), not a genuinely new slot. Skipping "
-              "to avoid publishing the same window twice. Use --force to override.")
+    # A manually triggered run (someone clicked "Run workflow", or a local run)
+    # must ALWAYS publish — never let the duplicate-guard silently skip a human.
+    manual_dispatch = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+    if not args.force and not args.dry and not manual_dispatch and recently_ran():
+        print("A scheduled run already completed within the last 2 hours — this looks "
+              "like a duplicate trigger (the GitHub schedule and the cron-job.org "
+              "backup both firing for the same slot), not a new one. Skipping to avoid "
+              "double-publishing. (Manual 'Run workflow' clicks are never skipped; or "
+              "use --force locally.)")
         return
 
     seen = load_seen()
