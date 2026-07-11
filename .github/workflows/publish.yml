@@ -13,6 +13,10 @@ on:
         description: "One-off: just test every RSS feed and report which work (no publishing)"
         type: boolean
         default: false
+      recover:
+        description: "One-time: recover good stories missed over the last ~72h (may create a few duplicates to delete)"
+        type: boolean
+        default: false
   push:
     branches: [main]              # deploys design/content edits without the AI step
 
@@ -45,8 +49,14 @@ jobs:
         if: github.event.inputs.check_feeds == 'true'
         run: python pipeline.py --check-feeds
 
+      - name: Recover missed stories (one-time)
+        if: github.event.inputs.recover == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python pipeline.py --recover
+
       - name: Fetch and write new stories (AI pipeline)
-        if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true' && github.event.inputs.check_feeds != 'true'
+        if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true' && github.event.inputs.check_feeds != 'true' && github.event.inputs.recover != 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python pipeline.py
