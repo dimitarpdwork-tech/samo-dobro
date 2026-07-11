@@ -590,6 +590,8 @@ def main() -> None:
                      help="one-off: add real Pexels photos to existing articles that don't have one")
     ap.add_argument("--recover", action="store_true",
                      help="one-time: sweep the last 72h ignoring the seen-list to recover stranded stories")
+    ap.add_argument("--list-candidates", action="store_true",
+                     help="diagnostic: print every candidate in the last 72h (no AI, no publishing)")
     ap.add_argument("--force", action="store_true", help="skip the duplicate-trigger cooldown check")
     args = ap.parse_args()
 
@@ -599,6 +601,17 @@ def main() -> None:
         return
     if args.backfill_photos:
         backfill_photos(cfg)
+        return
+    if args.list_candidates:
+        print(f"[{cfg['site_name']}] listing every candidate in the last 72h "
+              "(ignoring seen-list, no AI, no publishing)…\n")
+        cands = collect_candidates(cfg, set(), window_override=72, ignore_seen=True)
+        print(f"\n=== {len(cands)} candidates ===\n")
+        for i, c in enumerate(cands):
+            print(f"{i+1}. [{c['source']}] {c['title']}")
+            summary = (c.get('summary') or '').strip().replace('\n', ' ')
+            if summary:
+                print(f"     {summary[:200]}")
         return
     if args.recover:
         recover_missed(cfg)
