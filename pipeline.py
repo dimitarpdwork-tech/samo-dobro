@@ -131,12 +131,14 @@ def fetch_feed(feed: dict, window_hours: int) -> list[dict]:
     return out
 
 
-def collect_candidates(cfg: dict, seen_ids: set) -> list[dict]:
+def collect_candidates(cfg: dict, seen_ids: set, window_override: int | None = None,
+                        ignore_seen: bool = False) -> list[dict]:
     candidates, errors = [], []
+    window = window_override if window_override is not None else cfg.get("window_hours", 48)
     for feed in cfg["feeds"]:
         try:
-            entries = fetch_feed(feed, cfg.get("window_hours", 48))
-            fresh = [e for e in entries if e["id"] not in seen_ids]
+            entries = fetch_feed(feed, window)
+            fresh = entries if ignore_seen else [e for e in entries if e["id"] not in seen_ids]
             candidates.extend(fresh)
             print(f"  [feed] {feed['name']}: {len(fresh)} new / {len(entries)} recent")
         except Exception as exc:  # a dead feed must never kill the run
@@ -547,6 +549,38 @@ def recently_ran(hours: float = 2.0) -> bool:
         return False  # the safety guard must never itself block publishing
 
 
+def recover_missed(cfg: dict, hours: int = 72) -> None:
+    """One-time sweep to recover good stories stranded by an earlier bug: looks back
+    `hours` (wider than the normal window) AND ignores the seen-filter (since the
+    stranded stories are marked seen but never actually published). To avoid
+    re-posting stories that DID publish, it leans hard on the same duplicate-topic
+    guard used normally — the editor model is told to reject anything matching a
+    recently published headline. Still, review the result and delete any dupes."""
+    seen = load_seen()
+    print(f"[{cfg['site_name']}] RECOVERY sweep — looking back {hours}h, ignoring the seen-list…")
+    candidates = collect_candidates(cfg, set(), window_override=hours, ignore_seen=True)
+    print(f"  {len(candidates)} candidates in the {hours}h window")
+    if not candidates:
+        print("Nothing to recover. Done.")
+        return
+    # The duplicate guard is doing the heavy lifting here — feed it a generous history.
+    recent_headlines = load_recent_headlines(days=14, limit=120)
+    max_new = cfg.get("max_new_per_run", 6)
+    prompt = build_prompt(cfg, candidates, max_new, recent_headlines)
+    print("  asking the editor model to pick genuinely-good, NON-duplicate stories…")
+    raw = call_claude(cfg, prompt)
+    items = parse_selection(raw)[:max_new]
+    saved, new_urls = save_articles(cfg, items, candidates, seen)
+    ping_indexnow(cfg, new_urls)
+    for c in candidates:
+        if c["id"] not in set(seen["ids"]):
+            seen["ids"].append(c["id"])
+    save_seen(seen)
+    print(f"\nRecovery done. {saved} stor{'y' if saved == 1 else 'ies'} recovered and published.")
+    print("→ Please review these on the site and delete any that duplicate an "
+          "already-published story (the guard prevents most, but check).")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Good-news pipeline")
     ap.add_argument("--check-feeds", action="store_true")
@@ -554,6 +588,8 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=None, help="max new stories this run")
     ap.add_argument("--backfill-photos", action="store_true",
                      help="one-off: add real Pexels photos to existing articles that don't have one")
+    ap.add_argument("--recover", action="store_true",
+                     help="one-time: sweep the last 72h ignoring the seen-list to recover stranded stories")
     ap.add_argument("--force", action="store_true", help="skip the duplicate-trigger cooldown check")
     args = ap.parse_args()
 
@@ -563,6 +599,9 @@ def main() -> None:
         return
     if args.backfill_photos:
         backfill_photos(cfg)
+        return
+    if args.recover:
+        recover_missed(cfg)
         return
     # A manually triggered run (someone clicked "Run workflow", or a local run)
     # must ALWAYS publish — never let the duplicate-guard silently skip a human.
