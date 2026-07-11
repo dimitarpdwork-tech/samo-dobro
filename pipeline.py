@@ -169,7 +169,122 @@ def load_recent_headlines(days: int = 10, limit: int = 60) -> list[str]:
     return [h for _, h in items[:limit]]
 
 
-def build_prompt(cfg: dict, candidates: list[dict], max_new: int, recent_headlines: list[str]) -> str:
+def fetch_full_article(url: str, timeout: int = 20) -> str | None:
+    """Fetch a story's source page and extract just the article text.
+
+    Deliberately defensive: ANY failure — the extraction library not being
+    installed, a network error, a paywall, a bot-block, an unparseable page —
+    returns None, and the caller falls back to the RSS snippet for that one
+    story. A missing full-text must never break a publish run.
+    """
+    if not url:
+        return None
+    try:
+        import trafilatura  # imported lazily so the pipeline still runs without it
+    except Exception:
+        return None
+    try:
+        downloaded = trafilatura.fetch_url(url)
+        if not downloaded:
+            return None
+        text = trafilatura.extract(
+            downloaded,
+            include_comments=False,
+            include_tables=False,
+            no_fallback=False,
+            favor_precision=True,
+        )
+        if not text:
+            return None
+        text = text.strip()
+        # Guard against junk: too short to be a real article, or absurdly long.
+        if len(text) < 200:
+            return None
+        return text[:6000]  # cap so the writing prompt stays a sane size
+    except Exception as exc:
+        print(f"    [extract] could not read {url[:60]} ({type(exc).__name__}) — using snippet")
+        return None
+
+
+def build_selection_prompt(cfg: dict, candidates: list[dict], max_new: int,
+                            recent_headlines: list[str]) -> str:
+    """Phase 1: cheap selection only. Ask the model to pick the genuinely-good,
+    non-duplicate stories and return just their indices + a one-line reason —
+    NOT to write them. Small output, so it can never truncate away good picks."""
+    recent_block = ""
+    if recent_headlines:
+        recent_list = "\n".join(f"- {h}" for h in recent_headlines[:80])
+        recent_block = (
+            "\nALREADY PUBLISHED — do NOT pick anything covering the same event as "
+            f"any of these:\n{recent_list}\n"
+        )
+    cand_lines = "\n".join(
+        f'{i}. [{c["source"]}] {c["title"]} — {clean_text(c.get("summary",""), 260)}'
+        for i, c in enumerate(candidates)
+    )
+    return f"""You are the editor of "{cfg['site_name']}", which publishes ONLY genuinely good, uplifting news in {cfg['language_name']}.
+
+From the numbered candidates below, select up to {max_new} that are GENUINELY positive: concrete good outcomes, kindness, recoveries of nature, scientific or medical breakthroughs, community wins, cultural achievements, human generosity or skill.
+
+REJECT anything whose core is negative even if framed positively: war, crime, accidents, disasters, deaths, disease, scandals, court cases, party politics, elections, market/economic reports, weather, celebrity gossip, PR. When unsure, reject. Selecting fewer than {max_new} — even zero — is correct if the good ones aren't there.
+{recent_block}
+Respond with ONLY a JSON array of objects, nothing else:
+[{{"candidate": <number>, "why": "<3-6 word reason it's good news>"}}]
+
+CANDIDATES
+{cand_lines}"""
+
+
+def build_writing_prompt(cfg: dict, story: dict, full_text: str | None) -> str:
+    """Phase 2: write ONE article, ideally from the full source text. Uniqueness
+    rules are explicit so articles don't read as templated."""
+    source_block = (
+        f"FULL SOURCE ARTICLE (write from this):\n{full_text}"
+        if full_text else
+        f"SOURCE SUMMARY (only this snippet is available):\n{clean_text(story.get('summary',''), 600)}"
+    )
+    return f"""You are the editor of "{cfg['site_name']}", writing one good-news article in {cfg['language_name']}.
+
+HEADLINE OF THE STORY: {story['title']}
+SOURCE: {story['source']}
+
+{source_block}
+
+Write an original article in {cfg['language_name']}. Rules:
+- Use ONLY facts present in the source above. Never invent numbers, names, quotes, or dates.
+- Include 2-3 CONCRETE specific details from the source (a number, a place, a name, a circumstance) — this is what makes the piece real rather than generic.
+- VARY your opening: sometimes lead with the outcome, sometimes a striking detail, sometimes the human stakes. Do not always open the same way.
+- Find the actual STORY beyond the headline — what does the full source reveal that the headline alone wouldn't tell someone?
+- Warm, human, concrete tone. Hopeful, never saccharine or clickbaity.
+- {"180-260 words" if full_text else "130-180 words (snippet is thin, don't pad with filler)"}.
+- Native-level {cfg['language_name']}. Never invent words. Check noun-adjective gender/number agreement. Never use Russian spellings or words.
+
+Respond with ONLY a JSON object, nothing else:
+{{
+  "headline": "<max 75 chars, in {cfg['language_name']}>",
+  "slug_hint": "<3-6 latin lowercase words, hyphenated>",
+  "category": "<one id from: {', '.join(cfg['categories'].keys())}>",
+  "meta_description": "<max 155 chars>",
+  "summary_short": "<max 160 chars teaser>",
+  "body": "<the article, paragraphs separated by \\n\\n>",
+  "tags": ["<3-5 lowercase tags, no spaces>"],
+  "image_query": "<2-4 words English, generic scene for stock photo, never a real person's name>"
+}}"""
+
+
+def parse_json_object(raw: str) -> dict | None:
+    """Parse a single JSON object from a model response, tolerant of fences/prose."""
+    text = raw.strip()
+    text = re.sub(r"^```(?:json)?", "", text).strip()
+    text = re.sub(r"```$", "", text).strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    try:
+        obj = json.loads(text[start:end + 1])
+        return obj if isinstance(obj, dict) else None
+    except json.JSONDecodeError:
+        return None
     cat_lines = "\n".join(
         f'- "{cid}": {c["label"]}' for cid, c in cfg["categories"].items()
     )
@@ -563,14 +678,16 @@ def recover_missed(cfg: dict, hours: int = 72) -> None:
     if not candidates:
         print("Nothing to recover. Done.")
         return
-    # The duplicate guard is doing the heavy lifting here — feed it a generous history.
-    recent_headlines = load_recent_headlines(days=14, limit=120)
     max_new = cfg.get("max_new_per_run", 6)
-    prompt = build_prompt(cfg, candidates, max_new, recent_headlines)
-    print("  asking the editor model to pick genuinely-good, NON-duplicate stories…")
-    raw = call_claude(cfg, prompt)
-    items = parse_selection(raw)[:max_new]
-    saved, new_urls = save_articles(cfg, items, candidates, seen)
+    if cfg.get("two_phase", True):
+        saved, new_urls = run_two_phase(cfg, candidates, seen, max_new)
+    else:
+        recent_headlines = load_recent_headlines(days=14, limit=120)
+        prompt = build_prompt(cfg, candidates, max_new, recent_headlines)
+        print("  asking the editor model to pick genuinely-good, NON-duplicate stories…")
+        raw = call_claude(cfg, prompt)
+        items = parse_selection(raw)[:max_new]
+        saved, new_urls = save_articles(cfg, items, candidates, seen)
     ping_indexnow(cfg, new_urls)
     for c in candidates:
         if c["id"] not in set(seen["ids"]):
@@ -579,6 +696,75 @@ def recover_missed(cfg: dict, hours: int = 72) -> None:
     print(f"\nRecovery done. {saved} stor{'y' if saved == 1 else 'ies'} recovered and published.")
     print("→ Please review these on the site and delete any that duplicate an "
           "already-published story (the guard prevents most, but check).")
+
+
+def save_one_written(cfg: dict, written: dict, cand: dict, seen: dict) -> str | None:
+    """Save a single already-written article (two-phase output). Returns its URL, or None."""
+    default_cat = next(iter(cfg["categories"]))
+    now = datetime.now(timezone.utc)
+    body = (written.get("body") or "").strip()
+    headline = clip(written.get("headline", ""), 90)
+    if not body or not headline:
+        return None
+    category = written.get("category") if written.get("category") in cfg["categories"] else default_cat
+    slug = f'{slugify(written.get("slug_hint") or headline)}-{cand["id"][:4]}'
+    article = {
+        "id": cand["id"], "slug": slug, "headline": headline,
+        "meta_description": clip(written.get("meta_description", ""), 160),
+        "summary_short": clip(written.get("summary_short", ""), 170),
+        "body": body, "category": category,
+        "tags": [clip(t, 30) for t in (written.get("tags") or [])[:5]],
+        "source_name": cand["source"], "source_url": cand["link"],
+        "published": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "lang": cfg["lang"],
+    }
+    photo = find_stock_photo(cfg, written.get("image_query", ""))
+    if photo:
+        article.update(photo)
+    out_dir = CONTENT_DIR / now.strftime("%Y") / now.strftime("%m")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with open(out_dir / f"{slug}.json", "w", encoding="utf-8") as f:
+        json.dump(article, f, ensure_ascii=False, indent=2)
+    seen["ids"].append(cand["id"])
+    base = cfg["base_url"].rstrip("/") + cfg.get("base_path", "").rstrip("/")
+    return f'{base}/{cfg["article_prefix"]}/{slug}/'
+
+
+def run_two_phase(cfg: dict, candidates: list[dict], seen: dict, max_new: int) -> tuple[int, list[str]]:
+    """Phase 1: cheap selection call picks the good, non-duplicate stories.
+    Phase 2: for each pick, fetch the full source article and write it individually.
+    Full-text fetch failure falls back to the snippet automatically per-story."""
+    recent_headlines = load_recent_headlines(days=14, limit=120)
+    sel_prompt = build_selection_prompt(cfg, candidates, max_new, recent_headlines)
+    print("  [phase 1] selecting the genuinely-good stories…")
+    picks = parse_selection(call_claude(cfg, sel_prompt))[:max_new]
+    if not picks:
+        print("  [phase 1] nothing selected this run.")
+        return 0, []
+    print(f"  [phase 1] selected {len(picks)} — now writing each from full source…")
+
+    saved, new_urls = 0, []
+    seen_ids = set(seen["ids"])
+    for pick in picks:
+        try:
+            cand = candidates[int(pick["candidate"])]
+        except (KeyError, ValueError, IndexError, TypeError):
+            continue
+        if cand["id"] in seen_ids:
+            continue
+        full_text = fetch_full_article(cand["link"])
+        tag = "full source" if full_text else "snippet only"
+        write_prompt = build_writing_prompt(cfg, cand, full_text)
+        written = parse_json_object(call_claude(cfg, write_prompt))
+        if not written:
+            print(f"    [skip] writing failed for: {cand['title'][:55]}")
+            continue
+        url = save_one_written(cfg, written, cand, seen)
+        if url:
+            saved += 1
+            seen_ids.add(cand["id"])
+            new_urls.append(url)
+            print(f"  [new · {tag}] {clip(written.get('headline',''), 60)}")
+    return saved, new_urls
 
 
 def main() -> None:
@@ -642,21 +828,29 @@ def main() -> None:
         return
 
     max_new = args.limit or cfg.get("max_new_per_run", 6)
-    recent_headlines = load_recent_headlines()
-    prompt = build_prompt(cfg, candidates, max_new, recent_headlines)
-    print("  asking the editor model to pick the good ones…")
-    raw = call_claude(cfg, prompt)
-    items = parse_selection(raw)[:max_new]
-    saved, new_urls = save_articles(cfg, items, candidates, seen)
+
+    if cfg.get("two_phase", True):
+        # New default: select cheaply, then write each story from full source text.
+        saved, new_urls = run_two_phase(cfg, candidates, seen, max_new)
+    else:
+        # Legacy single-call path, kept as a fallback.
+        recent_headlines = load_recent_headlines()
+        prompt = build_prompt(cfg, candidates, max_new, recent_headlines)
+        print("  asking the editor model to pick the good ones…")
+        raw = call_claude(cfg, prompt)
+        items = parse_selection(raw)[:max_new]
+        saved, new_urls = save_articles(cfg, items, candidates, seen)
+
     ping_indexnow(cfg, new_urls)
 
     # Mark rejected candidates as seen too, so we never re-pay to re-judge them.
+    seen_now = set(seen["ids"])
     for c in candidates:
-        if c["id"] not in set(seen["ids"]):
+        if c["id"] not in seen_now:
             seen["ids"].append(c["id"])
     save_seen(seen)
     print(f"Done. {saved} new stor{'y' if saved == 1 else 'ies'} published, "
-          f"{len(candidates) - saved} rejected as not-good-enough news.")
+          f"{len(candidates) - saved} not selected.")
 
 
 if __name__ == "__main__":
