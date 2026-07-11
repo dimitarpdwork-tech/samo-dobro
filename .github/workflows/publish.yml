@@ -17,6 +17,10 @@ on:
         description: "One-time: recover good stories missed over the last ~72h (may create a few duplicates to delete)"
         type: boolean
         default: false
+      list_candidates:
+        description: "Diagnostic: list every story the pipeline sees in the last 72h (no AI, no publishing) — just so we can read them"
+        type: boolean
+        default: false
   push:
     branches: [main]              # deploys design/content edits without the AI step
 
@@ -49,6 +53,10 @@ jobs:
         if: github.event.inputs.check_feeds == 'true'
         run: python pipeline.py --check-feeds
 
+      - name: List candidates (diagnostic, no publishing)
+        if: github.event.inputs.list_candidates == 'true'
+        run: python pipeline.py --list-candidates
+
       - name: Recover missed stories (one-time)
         if: github.event.inputs.recover == 'true'
         env:
@@ -56,7 +64,7 @@ jobs:
         run: python pipeline.py --recover
 
       - name: Fetch and write new stories (AI pipeline)
-        if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true' && github.event.inputs.check_feeds != 'true' && github.event.inputs.recover != 'true'
+        if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true' && github.event.inputs.check_feeds != 'true' && github.event.inputs.recover != 'true' && github.event.inputs.list_candidates != 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python pipeline.py
