@@ -234,7 +234,10 @@ def call_claude(cfg: dict, prompt: str) -> str:
         sys.exit(1)
     body = {
         "model": cfg.get("model", "claude-haiku-4-5-20251001"),
-        "max_tokens": 6000,
+        # Headroom for up to ~10 articles at the 150-190 word target plus all their
+        # JSON metadata. The old 6000 ceiling truncated the response mid-JSON once
+        # article length was raised, which made the whole batch unparseable.
+        "max_tokens": cfg.get("max_tokens", 16000),
         "messages": [{"role": "user", "content": prompt}],
     }
     headers = {
@@ -250,6 +253,10 @@ def call_claude(cfg: dict, prompt: str) -> str:
                 raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
             resp.raise_for_status()
             data = resp.json()
+            if data.get("stop_reason") == "max_tokens":
+                print("  [api] WARNING: response hit the max_tokens ceiling and was "
+                      "truncated — some stories in this batch may be lost. Consider "
+                      "lowering max_new_per_run or raising max_tokens in config.json.")
             return "".join(
                 block.get("text", "")
                 for block in data.get("content", [])
@@ -299,22 +306,31 @@ def parse_selection(raw: str) -> list[dict]:
     text = raw.strip()
     text = re.sub(r"^```(?:json)?", "", text).strip()
     text = re.sub(r"```$", "", text).strip()
-    start, end = text.find("["), text.rfind("]")
-    if start == -1 or end == -1:
+    start = text.find("[")
+    if start == -1:
         print("  [parse] no JSON array in model output — treating as zero selections.")
         return []
-    array_text = text[start : end + 1]
-    try:
-        items = json.loads(array_text)
-        return items if isinstance(items, list) else []
-    except json.JSONDecodeError as exc:
-        print(f"  [parse] JSON error in the full batch ({exc}) — recovering stories "
-              f"one by one instead of discarding all of them…")
+    end = text.rfind("]")
+    if end != -1 and end > start:
+        # Normal case: a complete, bracketed array.
+        array_text = text[start : end + 1]
+        try:
+            items = json.loads(array_text)
+            return items if isinstance(items, list) else []
+        except json.JSONDecodeError as exc:
+            print(f"  [parse] JSON error in the full batch ({exc}) — recovering stories "
+                  f"one by one instead of discarding all of them…")
+        scan_text = array_text
+    else:
+        # Truncation case: opening '[' but no clean closing ']' — the response was
+        # cut off mid-JSON (usually the max_tokens ceiling). Recover the complete
+        # objects that DID arrive before the cutoff rather than losing everything.
+        print("  [parse] response looks truncated (no closing ']') — recovering the "
+              "complete stories that arrived before the cutoff…")
+        scan_text = text[start:]
 
-    # Recovery path: parse each {...} object independently, so one story with a
-    # stray unescaped quote doesn't cost every good story in the same batch.
     recovered, failed = [], 0
-    for obj_text in _split_top_level_objects(array_text):
+    for obj_text in _split_top_level_objects(scan_text):
         try:
             recovered.append(json.loads(obj_text))
         except json.JSONDecodeError:
