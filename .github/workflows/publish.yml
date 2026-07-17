@@ -21,6 +21,14 @@ on:
         description: "Diagnostic: list every story the pipeline sees in the last 72h (no AI, no publishing) — just so we can read them"
         type: boolean
         default: false
+      rewrite_articles:
+        description: "One-time: rewrite existing articles to professional length from their full source (preserves URLs & dates)"
+        type: boolean
+        default: false
+      rewrite_articles:
+        description: "One-time: rewrite existing articles to professional length from their original source (safe to re-run; keeps dates & URLs)"
+        type: boolean
+        default: false
   push:
     branches: [main]              # deploys design/content edits without the AI step
 
@@ -53,6 +61,12 @@ jobs:
         if: github.event.inputs.check_feeds == 'true'
         run: python pipeline.py --check-feeds
 
+      - name: Rewrite existing articles (one-time)
+        if: github.event.inputs.rewrite_articles == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python pipeline.py --rewrite-articles
+
       - name: List candidates (diagnostic, no publishing)
         if: github.event.inputs.list_candidates == 'true'
         run: python pipeline.py --list-candidates
@@ -64,7 +78,7 @@ jobs:
         run: python pipeline.py --recover
 
       - name: Fetch and write new stories (AI pipeline)
-        if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true' && github.event.inputs.check_feeds != 'true' && github.event.inputs.recover != 'true' && github.event.inputs.list_candidates != 'true'
+        if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true' && github.event.inputs.check_feeds != 'true' && github.event.inputs.recover != 'true' && github.event.inputs.list_candidates != 'true' && github.event.inputs.rewrite_articles != 'true' && github.event.inputs.rewrite_articles != 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python pipeline.py
