@@ -759,7 +759,7 @@ def build_articles(site) -> None:
                   (a["headline"], site.abs_(path))]
         ld = {"@context": "https://schema.org", "@type": "NewsArticle",
               "headline": a["headline"], "description": a["meta_description"],
-              "datePublished": a["published"], "dateModified": a["published"],
+              "datePublished": a["published"], "dateModified": a.get("rewritten") or a.get("updated", a["published"]),
               "inLanguage": cfg["lang"], "articleSection": cat["label"],
               "mainEntityOfPage": site.abs_(path),
               "image": [a["photo_url"]] if a.get("photo_url") else [site.abs_("/assets/og-default.png")],
@@ -907,7 +907,9 @@ def build_sitemap(site) -> None:
         urls.append((site.abs_(site.cat_path(cid)), now))
         pages = max(1, -(-len(arts) // PAGE_SIZE))
         urls += [(site.abs_(f'{site.cat_path(cid)}page/{p}/'), now) for p in range(2, pages + 1)]
-    urls += [(site.abs_(site.article_path(a)), a["_dt"].strftime("%Y-%m-%d")) for a in site.articles]
+    def _lastmod(a):
+        return (a.get("updated") or "")[:10] or a["_dt"].strftime("%Y-%m-%d")
+    urls += [(site.abs_(site.article_path(a)), _lastmod(a)) for a in site.articles]
     body = "".join(f"<url><loc>{esc(u)}</loc><lastmod>{d}</lastmod></url>" for u, d in urls)
     write(DIST / "sitemap.xml",
           f'<?xml version="1.0" encoding="UTF-8"?>'
