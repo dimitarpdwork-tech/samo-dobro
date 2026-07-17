@@ -767,6 +767,151 @@ def run_two_phase(cfg: dict, candidates: list[dict], seen: dict, max_new: int) -
     return saved, new_urls
 
 
+def rewrite_articles(cfg: dict, limit: int | None = None) -> None:
+    """Rewrite existing articles to the new professional standard using the full
+    source text. Preserves each article's slug, published date, category, and photo
+    (SEO-safe). Only the text fields (headline/body/meta/summary/tags) change.
+
+    Defensive: skips seed articles, articles with no source_url, and ones already
+    rewritten. Any per-article failure leaves that article untouched and moves on.
+    Safe to re-run — it resumes where it left off via the 'rewritten' flag."""
+    if not CONTENT_DIR.exists():
+        print("No articles to rewrite.")
+        return
+    paths = sorted(CONTENT_DIR.rglob("*.json"))
+    todo = []
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8-sig") as f:
+                a = json.load(f)
+        except Exception:
+            continue
+        if a.get("id", "").startswith("seed"):
+            continue          # skip the hand-written launch seed articles
+        if a.get("rewritten"):
+            continue          # already upgraded on a previous run
+        if not a.get("source_url"):
+            continue          # nothing to re-fetch from
+        if a.get("cat_unlock") or a.get("pin_until"):
+            continue          # never touch the special anniversary article
+        todo.append((path, a))
+
+    if not todo:
+        print("Every eligible article is already rewritten. Nothing to do.")
+        return
+    if limit:
+        todo = todo[:limit]
+    print(f"Rewriting {len(todo)} article(s) to the professional standard…\n")
+
+    done, skipped = 0, 0
+    for path, a in todo:
+        full_text = fetch_full_article(a["source_url"])
+        if not full_text:
+            print(f"  [skip · no source] {a.get('headline','')[:55]}")
+            skipped += 1
+            continue
+        # Reuse the same writing prompt the live pipeline uses, so rewritten
+        # articles match new ones exactly in style and quality.
+        story = {"title": a.get("headline", ""), "source": a.get("source_name", ""),
+                 "link": a.get("source_url", ""), "summary": a.get("summary_short", "")}
+        written = parse_json_object(call_claude(cfg, build_writing_prompt(cfg, story, full_text)))
+        if not written or not (written.get("body") or "").strip():
+            print(f"  [skip · write failed] {a.get('headline','')[:55]}")
+            skipped += 1
+            continue
+        # Overwrite ONLY the text fields; keep id, slug, published, category, photo.
+        a["headline"] = clip(written.get("headline", a["headline"]), 90)
+        a["meta_description"] = clip(written.get("meta_description", a.get("meta_description", "")), 160)
+        a["summary_short"] = clip(written.get("summary_short", a.get("summary_short", "")), 170)
+        a["body"] = written["body"].strip()
+        if written.get("tags"):
+            a["tags"] = [clip(t, 30) for t in written["tags"][:5]]
+        a["rewritten"] = True
+        a["updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(a, f, ensure_ascii=False, indent=2)
+        done += 1
+        print(f"  [rewritten] {a['headline'][:60]}")
+    print(f"\nDone. {done} article(s) rewritten, {skipped} skipped "
+          f"(source unreachable — left untouched, still live as before).")
+
+
+def rewrite_articles(cfg: dict, limit: int | None = None) -> None:
+    """Go back through existing articles and rewrite each to the current
+    professional length/uniqueness standard, using its original source.
+
+    Safety-first, because this EDITS live content:
+    - Preserves slug, id, published date, category, and any existing photo —
+      so URLs and SEO are untouched (only headline/body/meta/tags improve).
+    - Skips seed articles and anything already marked rewritten.
+    - Skips (leaves untouched) any article whose source can't be re-fetched or
+      whose rewrite fails to parse — a bad rewrite must never replace good text.
+    - Writes each file in place only after a valid new version is produced.
+    """
+    if not CONTENT_DIR.exists():
+        print("No content directory. Nothing to rewrite.")
+        return
+    paths = sorted(CONTENT_DIR.rglob("*.json"))
+    done, skipped, failed = 0, 0, 0
+    for path in paths:
+        if limit is not None and done >= limit:
+            break
+        try:
+            with open(path, encoding="utf-8-sig") as f:
+                art = json.load(f)
+        except Exception:
+            continue  # broken file is build.py's problem, not ours
+
+        # Skip things we shouldn't touch.
+        if art.get("id", "").startswith("seed") or art.get("rewritten"):
+            skipped += 1
+            continue
+        # Never rewrite the special anniversary / pinned pieces.
+        if art.get("cat_unlock") or art.get("pin_until") or art.get("publish_at"):
+            skipped += 1
+            continue
+        src_url = art.get("source_url")
+        if not src_url:
+            skipped += 1
+            continue
+
+        full_text = fetch_full_article(src_url)
+        if not full_text:
+            # Can't re-fetch the source — leave the existing article exactly as is.
+            failed += 1
+            print(f"  [keep] source unavailable, left untouched: {art.get('headline','')[:50]}")
+            continue
+
+        # Reuse the same writing prompt as the live pipeline for consistency.
+        pseudo = {"title": art.get("headline", ""), "source": art.get("source_name", ""),
+                  "summary": art.get("summary_short", ""), "link": src_url}
+        written = parse_json_object(call_claude(cfg, build_writing_prompt(cfg, pseudo, full_text)))
+        if not written or not (written.get("body") or "").strip():
+            failed += 1
+            print(f"  [keep] rewrite failed, left untouched: {art.get('headline','')[:50]}")
+            continue
+
+        # Merge the improved fields, preserving everything SEO-critical.
+        category = written.get("category") if written.get("category") in cfg["categories"] else art.get("category")
+        art["headline"] = clip(written.get("headline") or art["headline"], 90)
+        art["meta_description"] = clip(written.get("meta_description", ""), 160) or art.get("meta_description", "")
+        art["summary_short"] = clip(written.get("summary_short", ""), 170) or art.get("summary_short", "")
+        art["body"] = written["body"].strip()
+        art["category"] = category
+        if written.get("tags"):
+            art["tags"] = [clip(t, 30) for t in written["tags"][:5]]
+        art["rewritten"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # slug, id, published, photo_* all deliberately left as-is.
+
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(art, f, ensure_ascii=False, indent=2)
+        done += 1
+        print(f"  [rewritten] {art['headline'][:55]}")
+
+    print(f"\nRewrite complete. {done} rewritten, {skipped} skipped (seed/special/no-source), "
+          f"{failed} left untouched (source unavailable or rewrite failed).")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Good-news pipeline")
     ap.add_argument("--check-feeds", action="store_true")
@@ -778,6 +923,10 @@ def main() -> None:
                      help="one-time: sweep the last 72h ignoring the seen-list to recover stranded stories")
     ap.add_argument("--list-candidates", action="store_true",
                      help="diagnostic: print every candidate in the last 72h (no AI, no publishing)")
+    ap.add_argument("--rewrite-articles", action="store_true",
+                     help="one-time: rewrite existing articles to professional length from their full source")
+    ap.add_argument("--rewrite-limit", type=int, default=None,
+                     help="cap how many articles --rewrite-articles processes in one run")
     ap.add_argument("--force", action="store_true", help="skip the duplicate-trigger cooldown check")
     args = ap.parse_args()
 
@@ -787,6 +936,9 @@ def main() -> None:
         return
     if args.backfill_photos:
         backfill_photos(cfg)
+        return
+    if args.rewrite_articles:
+        rewrite_articles(cfg, limit=args.rewrite_limit)
         return
     if args.list_candidates:
         print(f"[{cfg['site_name']}] listing every candidate in the last 72h "
