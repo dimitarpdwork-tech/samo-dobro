@@ -25,10 +25,6 @@ on:
         description: "One-time: rewrite existing articles to professional length from their full source (preserves URLs & dates)"
         type: boolean
         default: false
-      rewrite_articles:
-        description: "One-time: rewrite existing articles to professional length from their original source (safe to re-run; keeps dates & URLs)"
-        type: boolean
-        default: false
   push:
     branches: [main]              # deploys design/content edits without the AI step
 
