@@ -86,8 +86,8 @@
   "feeds": [
     { "name": "БТА", "url": "https://www.bta.bg/bg/rss/free" },
     { "name": "Дневник", "url": "https://www.dnevnik.bg/rss/" },
-    { "name": "Actualno", "url": "https://www.actualno.com/rss" },
+    { "name": "Actualno", "url": "https://www.actualno.com/rss/novini-new" },
     { "name": "24 часа", "url": "https://www.24chasa.bg/rss" },
-    { "name": "Pogled.info", "url": "https://pogled.info/rss" }
+    { "name": "Добри новини", "url": "https://dobrinovini.com/feed/" }
   ]
 }
