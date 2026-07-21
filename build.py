@@ -137,9 +137,15 @@ BG_TRANSLIT = {
 }
 
 
-def tag_slug(tag: str) -> str:
+def tag_slug(tag: str, aliases: dict | None = None) -> str:
     """Transliterate a (typically Cyrillic) hashtag into a clean URL slug.
-    Latin input passes through unchanged aside from lowercasing/hyphenation."""
+    Latin input passes through unchanged aside from lowercasing/hyphenation.
+    `aliases` (from config.json's tag_aliases) maps a raw computed slug to a
+    canonical one — needed because the content pipeline sometimes tags in
+    Cyrillic and sometimes in already-Latin/casual transliteration (e.g.
+    'София' -> 'sofiya' via BG_TRANSLIT, but a literal 'sofia' tag passes
+    through unchanged), which otherwise silently fragments one topic across
+    two separate tag pages with zero overlapping articles."""
     out = []
     for ch in tag.strip().lower():
         if ch in BG_TRANSLIT:
@@ -149,18 +155,23 @@ def tag_slug(tag: str) -> str:
         elif ch in (" ", "-", "_"):
             out.append("-")
         # anything else (punctuation, emoji, etc.) is simply dropped
-    return re.sub(r"-+", "-", "".join(out)).strip("-")
+    slug = re.sub(r"-+", "-", "".join(out)).strip("-")
+    if aliases:
+        slug = aliases.get(slug, slug)
+    return slug
 
 
-def build_tag_index(articles: list[dict]) -> dict:
-    """Group articles by tag slug: slug -> {'display': original_tag_text,
-    'articles': [...]}. Articles are assumed pre-sorted newest-first, so each
-    tag's article list stays newest-first too. Tags that transliterate to an
-    empty slug (pure punctuation/emoji) are skipped."""
+def build_tag_index(articles: list[dict], aliases: dict | None = None) -> dict:
+    """Group articles by (alias-normalized) tag slug: slug -> {'display':
+    original_tag_text, 'articles': [...]}. Articles are assumed pre-sorted
+    newest-first, so each tag's article list stays newest-first too, and the
+    'display' name is whichever spelling appeared on the most recent article
+    for that slug. Tags that transliterate to an empty slug (pure
+    punctuation/emoji) are skipped."""
     idx: dict[str, dict] = {}
     for a in articles:
         for t in a.get("tags", []):
-            slug = tag_slug(t)
+            slug = tag_slug(t, aliases)
             if not slug:
                 continue
             entry = idx.setdefault(slug, {"display": t, "articles": []})
@@ -863,7 +874,7 @@ def build_tags(site) -> set:
     page, so build_articles() knows which hashtags to render as links vs.
     plain text."""
     cfg, ui = site.cfg, site.cfg["ui"]
-    idx = build_tag_index(site.articles)
+    idx = build_tag_index(site.articles, site.cfg.get("tag_aliases", {}))
     qualifying = {slug: data for slug, data in idx.items()
                   if len(data["articles"]) >= MIN_TAG_ARTICLES}
     for slug, data in qualifying.items():
@@ -916,8 +927,8 @@ def build_articles(site, linked_tags: set) -> None:
             rel_html = (f'<div class="sec"><h2>{esc(ui["more_good"])}</h2><span class="rule"></span></div>'
                         '<div class="grid">' + "".join(card(site, r) for r in related) + "</div>")
         tags = "".join(
-            (f'<a class="tag" href="{site.u(site.tag_path(tag_slug(t)))}">#{esc(t)}</a>'
-             if tag_slug(t) in linked_tags
+            (f'<a class="tag" href="{site.u(site.tag_path(tag_slug(t, cfg.get("tag_aliases", {}))))}">#{esc(t)}</a>'
+             if tag_slug(t, cfg.get("tag_aliases", {})) in linked_tags
              else f'<span class="tag">#{esc(t)}</span>')
             for t in a.get("tags", []))
         src = ""
