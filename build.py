@@ -252,6 +252,9 @@ letter-spacing:.04em;color:var(--muted);background:var(--card);border:1px solid 
 border-radius:999px;padding:4px 11px;margin:0 0 14px}
 .byline{display:inline-block;font-family:var(--fl);font-size:.85rem;font-weight:700;
 color:var(--pd);margin:0 10px 14px 0}
+.quick-facts{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+padding:16px 20px 16px 38px;margin:6px 0 20px;list-style:disc}
+.quick-facts li{font-size:.98rem;line-height:1.55;margin:4px 0;color:var(--ink)}
 .cat-name{color:var(--pd);font-weight:700;border-bottom:2px dotted var(--p);cursor:pointer;
 padding:0 1px}
 .cat-name.found{color:var(--t);border-bottom-style:solid}
@@ -262,6 +265,7 @@ margin:0 0 1em;text-align:center}
 @keyframes catpoem-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 .article .banner{border-radius:var(--r);overflow:hidden;margin:20px 0;line-height:0;border:1px solid var(--line)}
 .article .body p{font-size:1.07rem;line-height:1.75;margin:0 0 1.2em}
+.article .body p a{color:var(--pd);text-decoration:underline;text-underline-offset:2px}
 .article .body h2{font-family:var(--fd);font-weight:800;font-size:1.5rem;
 letter-spacing:-.01em;margin:1.5em 0 .5em}
 .article .body h3{font-family:var(--fd);font-weight:700;font-size:1.2rem;
@@ -773,13 +777,31 @@ def build_lists(site) -> None:
                                  noindex=(p > 1), is_home=(key == "home" and p == 1)))
 
 
+def render_inline_links(text: str) -> str:
+    """Support a minimal [label](url) markdown link syntax within paragraph
+    text, for citing official/clinical sources inline — e.g. linking to a
+    health ministry's immunization portal from a health article. Everything
+    outside the recognized syntax is still fully HTML-escaped; text with no
+    such syntax renders identically to plain esc(text)."""
+    parts = []
+    last = 0
+    for m in re.finditer(r'\[([^\]]+)\]\((https?://[^\s)]+)\)', text):
+        parts.append(esc(text[last:m.start()]))
+        label, url = m.group(1), m.group(2)
+        parts.append(f'<a href="{esc(url)}" target="_blank" rel="noopener">{esc(label)}</a>')
+        last = m.end()
+    parts.append(esc(text[last:]))
+    return "".join(parts)
+
+
 def render_article_body(body: str) -> str:
     """Render article body text into HTML paragraphs, with optional light
     heading support: a block (separated by a blank line, same as any other
     paragraph) that starts with '## ' or '### ' renders as <h2>/<h3> instead
     of <p>. Plain paragraph blocks with no such marker render exactly as
     before — fully backward-compatible with existing short-form articles
-    that don't use headings at all."""
+    that don't use headings at all. Paragraph text also supports an inline
+    [label](url) link, e.g. for citing an official/clinical source."""
     parts = []
     for block in body.split("\n\n"):
         block = block.strip()
@@ -790,7 +812,7 @@ def render_article_body(body: str) -> str:
         elif block.startswith("## "):
             parts.append(f"<h2>{esc(block[3:].strip())}</h2>")
         else:
-            parts.append(f"<p>{esc(block)}</p>")
+            parts.append(f"<p>{render_inline_links(block)}</p>")
     return "".join(parts)
 
 
@@ -903,12 +925,19 @@ def build_articles(site, linked_tags: set) -> None:
             src = (f'<aside class="srcbox"><strong>{esc(ui["source"])}:</strong> '
                    f'<a href="{esc(a["source_url"])}" target="_blank" rel="noopener">{esc(a["source_name"])}</a>'
                    f'<p class="ainote">{esc(ui["ai_note"])}</p></aside>')
+        quick_facts = [f for f in (a.get("quick_facts") or []) if f][:5]
+        quick_facts_html = ""
+        if quick_facts:
+            items = "".join(f"<li>{esc(f)}</li>" for f in quick_facts)
+            quick_facts_html = (f'<ul class="quick-facts" '
+                                 f'aria-label="{esc(ui.get("quick_facts_label", "Quick facts"))}">{items}</ul>')
         body = f"""<article class="article">
 <a class="backlink" href="{site.u('/')}">← {esc(ui['back_home'])}</a>
 {meta_row(site, a)}
 <h1>{esc(a['headline'])}</h1>
 <span class="byline">{esc(ui.get('byline_label', 'Compiled by'))} {esc(cfg.get('byline_name', cfg['site_name'] + ' AI'))} · <a href="{site.u('/' + cfg['about_path'] + '/#editorial-process')}">{esc(ui.get('how_it_works', 'How this works'))}</a></span>
 {f'<span class="ai-badge">{esc(ui.get("ai_badge", "AI-summarized"))}</span>' if not a.get('no_ai_badge') else ''}
+{quick_facts_html}
 <div class="banner">{media(cfg, a, ui, height=250, eager=True, sizes="(max-width: 760px) 100vw, 720px")}</div>
 <div class="body">{paras}</div>
 {f'<div class="tags">{tags}</div>' if tags else ''}
