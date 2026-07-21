@@ -244,6 +244,10 @@ body.brand-globe .sec .rule{height:2px;background:linear-gradient(90deg,var(--t)
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;
 display:flex;flex-direction:column;transition:transform .18s,box-shadow .18s}
 .card:hover{transform:translateY(-4px);box-shadow:0 14px 30px rgba(20,40,60,.10)}
+.card.pillar-card{border-color:var(--p);border-width:2px}
+.pillar-badge{display:inline-block;font-family:var(--fl);font-size:.7rem;font-weight:700;
+letter-spacing:.03em;color:var(--pd);background:color-mix(in srgb,var(--p) 16%,var(--card));
+border-radius:999px;padding:3px 10px;align-self:flex-start}
 .card .thumb{display:block;line-height:0}
 .thumb{position:relative;overflow:hidden;background:var(--line)}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
@@ -664,9 +668,13 @@ def meta_row(site, a, with_cat=True) -> str:
 
 def card(site, a, eager=False) -> str:
     href = site.u(site.article_path(a))
-    return f"""<article class="card">
+    ui = site.cfg["ui"]
+    badge = (f'<span class="pillar-badge">{esc(ui.get("guide_badge", "📖 Guide"))}</span>'
+             if a.get("pillar") else "")
+    return f"""<article class="card{' pillar-card' if a.get('pillar') else ''}">
 <a href="{href}" aria-label="{esc(a['headline'])}">{media(site.cfg, a, site.cfg['ui'], eager=eager)}</a>
 <div class="cbody">
+{badge}
 <h3><a href="{href}">{esc(a['headline'])}</a></h3>
 <p>{esc(a['summary_short'])}</p>
 {meta_row(site, a)}
@@ -733,14 +741,19 @@ def build_lists(site) -> None:
                     break  # site.articles is newest-first; first active pin wins
             except Exception:
                 pass
-    groups = [("home", "/", site.articles, cfg["description"], cfg["site_name"] + " — " + cfg["tagline"], "")]
+    groups = [("home", "/", site.articles, [], cfg["description"], cfg["site_name"] + " — " + cfg["tagline"], "")]
     for cid, cat in cfg["categories"].items():
-        arts = [a for a in site.articles if a["category"] == cid]
+        cat_arts = [a for a in site.articles if a["category"] == cid]
+        # Pillar/guide articles are pulled out of the normal reverse-chronological
+        # flow entirely — they're pinned once at the top of page 1 instead of
+        # paginating away like a dated news item as new content publishes.
+        pillars = [a for a in cat_arts if a.get("pillar")]
+        regular = [a for a in cat_arts if not a.get("pillar")]
         intro = cat.get("intro", "")
         desc = intro if intro else f'{cat["label"]} · {cfg["site_name"]} — {cfg["tagline"]}'
-        groups.append((cid, site.cat_path(cid), arts, desc,
+        groups.append((cid, site.cat_path(cid), regular, pillars, desc,
                        f'{cat["label"]} · {cfg["site_name"]}', intro))
-    for key, base_path, arts, desc, title, intro in groups:
+    for key, base_path, arts, pillars, desc, title, intro in groups:
         pages = max(1, -(-len(arts) // PAGE_SIZE))
         for p in range(1, pages + 1):
             chunk = arts[(p - 1) * PAGE_SIZE: p * PAGE_SIZE]
@@ -755,6 +768,10 @@ def build_lists(site) -> None:
             body += f'<div class="sec"><{heading_tag}>{esc(label)}</{heading_tag}><span class="rule"></span></div>'
             if intro and p == 1:
                 body = f'<p class="cat-intro">{esc(intro)}</p>' + body
+            if pillars and p == 1:
+                guide_label = ui.get("guides_label", "📖 Наръчници" if cfg["lang"] == "bg" else "📖 Guides")
+                body += f'<div class="sec pillar-sec"><h2>{esc(guide_label)}</h2><span class="rule"></span></div>'
+                body += '<div class="grid pillar-grid">' + "".join(card(site, a) for a in pillars) + "</div>"
             is_home_p1 = (key == "home" and p == 1)
             body += '<div class="grid">' + "".join(
                 card(site, a, eager=(is_home_p1 and i == 0)) for i, a in enumerate(rest)
@@ -769,9 +786,13 @@ def build_lists(site) -> None:
             elif key != "home":
                 cat = cfg["categories"][key]
                 crumbs = [(ui["home"], site.abs_("/")), (cat["label"], site.abs_(site.cat_path(key)))]
+                # Pillars are included in page 1's ItemList too, since they're
+                # genuinely part of this category even though pinned outside
+                # the normal chunked pagination.
+                schema_items = (pillars + chunk) if p == 1 else chunk
                 item_list = {"@type": "ItemList", "itemListElement": [
                     {"@type": "ListItem", "position": i + 1, "url": site.abs_(site.article_path(a))}
-                    for i, a in enumerate(chunk)
+                    for i, a in enumerate(schema_items)
                 ]}
                 jsonld = [
                     breadcrumb_ld(site, crumbs),
