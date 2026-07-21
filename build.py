@@ -262,6 +262,11 @@ margin:0 0 1em;text-align:center}
 @keyframes catpoem-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 .article .banner{border-radius:var(--r);overflow:hidden;margin:20px 0;line-height:0;border:1px solid var(--line)}
 .article .body p{font-size:1.07rem;line-height:1.75;margin:0 0 1.2em}
+.article .body h2{font-family:var(--fd);font-weight:800;font-size:1.5rem;
+letter-spacing:-.01em;margin:1.5em 0 .5em}
+.article .body h3{font-family:var(--fd);font-weight:700;font-size:1.2rem;
+letter-spacing:-.01em;margin:1.3em 0 .4em}
+.article .body h2:first-child,.article .body h3:first-child{margin-top:0}
 .tags{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}
 .tag{font-family:var(--fl);font-size:.78rem;font-weight:700;color:var(--pd);
 background:color-mix(in srgb,var(--p) 14%,var(--card));border-radius:999px;padding:5px 12px}
@@ -741,6 +746,27 @@ def build_lists(site) -> None:
                                  noindex=(p > 1), is_home=(key == "home" and p == 1)))
 
 
+def render_article_body(body: str) -> str:
+    """Render article body text into HTML paragraphs, with optional light
+    heading support: a block (separated by a blank line, same as any other
+    paragraph) that starts with '## ' or '### ' renders as <h2>/<h3> instead
+    of <p>. Plain paragraph blocks with no such marker render exactly as
+    before — fully backward-compatible with existing short-form articles
+    that don't use headings at all."""
+    parts = []
+    for block in body.split("\n\n"):
+        block = block.strip()
+        if not block:
+            continue
+        if block.startswith("### "):
+            parts.append(f"<h3>{esc(block[4:].strip())}</h3>")
+        elif block.startswith("## "):
+            parts.append(f"<h2>{esc(block[3:].strip())}</h2>")
+        else:
+            parts.append(f"<p>{esc(block)}</p>")
+    return "".join(parts)
+
+
 def apply_cat_unlock(paras_html: str, unlock: dict) -> str:
     """Wrap the first mention of each cat name in the article with a tappable
     span. Tapping all of them (any order) reveals the hidden poem below."""
@@ -828,7 +854,7 @@ def build_articles(site, linked_tags: set) -> None:
     cfg, ui = site.cfg, site.cfg["ui"]
     for a in site.articles:
         cat = cfg["categories"][a["category"]]
-        paras = "".join(f"<p>{esc(p.strip())}</p>" for p in a["body"].split("\n\n") if p.strip())
+        paras = render_article_body(a["body"])
         cat_unlock = a.get("cat_unlock")
         if cat_unlock:
             paras = apply_cat_unlock(paras, cat_unlock)
