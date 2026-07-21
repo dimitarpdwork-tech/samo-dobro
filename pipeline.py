@@ -308,7 +308,8 @@ def parse_json_object(raw: str) -> dict | None:
         return None
 
 
-def call_claude(cfg: dict, prompt: str) -> str:
+def call_claude(cfg: dict, prompt: str, tools: list[dict] | None = None,
+                 max_tokens_override: int | None = None) -> str:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         print("ANTHROPIC_API_KEY is not set. Aborting.")
@@ -318,9 +319,15 @@ def call_claude(cfg: dict, prompt: str) -> str:
         # Headroom for up to ~10 articles at the 150-190 word target plus all their
         # JSON metadata. The old 6000 ceiling truncated the response mid-JSON once
         # article length was raised, which made the whole batch unparseable.
-        "max_tokens": cfg.get("max_tokens", 16000),
+        "max_tokens": max_tokens_override or cfg.get("max_tokens", 16000),
         "messages": [{"role": "user", "content": prompt}],
     }
+    if tools:
+        # web_search is a server-side tool: the API executes searches and feeds
+        # results back to the model internally, returning one final response
+        # with all the interleaved search/reasoning/text blocks already
+        # resolved — no client-side tool-result loop needed here.
+        body["tools"] = tools
     headers = {
         "x-api-key": api_key,
         "anthropic-version": API_VERSION,
@@ -811,6 +818,164 @@ def rewrite_articles(cfg: dict, limit: int | None = None) -> None:
           f"{failed} left untouched (source unavailable or rewrite failed).")
 
 
+def count_articles_by_category(cfg: dict) -> dict:
+    """Count existing regular (non-pillar) articles per category — used to
+    find the thinnest category to prioritize for the next generated guide."""
+    counts = {cid: 0 for cid in cfg["categories"]}
+    if not CONTENT_DIR.exists():
+        return counts
+    for path in CONTENT_DIR.rglob("*.json"):
+        try:
+            with open(path, encoding="utf-8-sig") as f:
+                a = json.load(f)
+        except Exception:
+            continue
+        cid = a.get("category")
+        if cid in counts and not a.get("pillar"):
+            counts[cid] += 1
+    return counts
+
+
+def pick_thinnest_category(cfg: dict) -> str:
+    counts = count_articles_by_category(cfg)
+    return min(counts, key=counts.get)
+
+
+def load_existing_guide_topics(category_id: str) -> list[str]:
+    """Headlines of existing pillar/guide articles in this category, so a
+    newly generated guide doesn't duplicate an existing one's topic."""
+    topics = []
+    if not CONTENT_DIR.exists():
+        return topics
+    for path in CONTENT_DIR.rglob("*.json"):
+        try:
+            with open(path, encoding="utf-8-sig") as f:
+                a = json.load(f)
+        except Exception:
+            continue
+        if a.get("pillar") and a.get("category") == category_id:
+            topics.append(a.get("headline", ""))
+    return topics
+
+
+def build_guide_prompt(cfg: dict, category_id: str, avoid_topics: list[str]) -> str:
+    """Prompt for an original, source-free evergreen 'наръчник' guide article.
+    Unlike the daily wire-rewrite pipeline, this is explicitly told to use
+    live web search to verify facts before writing — especially anything
+    time-sensitive (currency, current office-holders, recent statistics) —
+    rather than relying only on the model's training data, which can be
+    stale or simply wrong by the time this runs. This is the content type
+    that structurally avoids the isBasedOn attribution-cannibalization
+    problem: it's not a rewrite of one source, so there's nothing to
+    attribute away to."""
+    cat = cfg["categories"][category_id]
+    avoid_block = ""
+    if avoid_topics:
+        avoid_list = "\n".join(f"- {t}" for t in avoid_topics)
+        avoid_block = (f"\nDO NOT duplicate the topic of any existing guide in this category:\n"
+                        f"{avoid_list}\n")
+
+    return f"""You are the editor of "{cfg['site_name']}", writing an original, evergreen reference guide
+(a 'наръчник') for the "{cat['label']}" category, in {cfg['language_name']}.
+
+This is NOT a rewrite of one news story. It is a standalone, comprehensive guide that:
+- Is not tied to any single source — it's your own synthesis of well-established, publicly known facts
+- Will stay relevant for years, not days
+- Genuinely earns being cited by AI search engines and Google, rather than re-summarizing someone else's reporting
+{avoid_block}
+CRITICAL — USE WEB SEARCH TO VERIFY FACTS BEFORE WRITING:
+- Search the web for anything you are not 100% certain about — especially current statistics, currency or
+  economic status, who currently holds a position, recent legal/regulatory changes, or anything else that could
+  have changed recently. Do not rely on training data alone for anything time-sensitive.
+- If you cannot verify a specific fact via search, do not include it — write around it or drop it rather than guess.
+- Where a section rests on one clearly verifiable official/authoritative source, cite it inline (format below)
+  the way a careful human editor would — but only a URL you actually found via search and are confident is real.
+  Never invent a URL.
+
+STRUCTURE
+- Open with a 2-4 sentence introduction (no heading) framing why this topic matters.
+- Follow with 4-6 clearly separated sections, each starting with its own '## Heading' line (in
+  {cfg['language_name']}), covering genuinely distinct sub-topics — not padding.
+- To cite a source inline, use exactly this syntax: [link text](URL)
+- Close with a short, honest paragraph (no heading) stating this is an AI-compiled guide based on publicly
+  available information rather than one single source, and inviting corrections via the site's contact email.
+- Total length: 500-800 words.
+
+Respond with ONLY a JSON object, nothing else:
+{{
+  "headline": "<max 90 chars, in {cfg['language_name']}>",
+  "slug_hint": "<3-6 latin lowercase words, hyphenated>",
+  "meta_description": "<max 155 chars>",
+  "summary_short": "<max 170 chars teaser>",
+  "body": "<the full guide, paragraphs/headings separated by \\n\\n, per the structure above>",
+  "quick_facts": ["<3-5 short standalone facts, in {cfg['language_name']}>"],
+  "tags": ["<4-6 lowercase tags, no spaces, in {cfg['language_name']}>"]
+}}"""
+
+
+def save_guide(cfg: dict, written: dict, category_id: str) -> str | None:
+    """Save a generated evergreen guide article. Unlike regular articles,
+    guides have no source_url/source_name (they're original syntheses, not
+    single-source rewrites) — so build.py's schema correctly omits
+    isBasedOn for them — and are flagged pillar=true so build.py pins them
+    at the top of their category page instead of letting them paginate away
+    like a dated news item."""
+    body = (written.get("body") or "").strip()
+    headline = clip(written.get("headline", ""), 90)
+    if not body or not headline:
+        return None
+    now = datetime.now(timezone.utc)
+    guide_id = hashlib.sha1((headline + now.isoformat()).encode("utf-8")).hexdigest()[:16]
+    slug = f'{slugify(written.get("slug_hint") or headline)}-{guide_id[:4]}'
+    article = {
+        "id": guide_id, "slug": slug, "headline": headline,
+        "meta_description": clip(written.get("meta_description", ""), 160),
+        "summary_short": clip(written.get("summary_short", ""), 170),
+        "body": body, "category": category_id,
+        "tags": [clip(t, 30) for t in (written.get("tags") or [])[:6]],
+        "quick_facts": [c for c in (clip(f, 120) for f in (written.get("quick_facts") or [])[:5]) if c],
+        "published": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "lang": cfg["lang"],
+        "pillar": True,
+    }
+    out_dir = CONTENT_DIR / now.strftime("%Y") / now.strftime("%m")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with open(out_dir / f"{slug}.json", "w", encoding="utf-8") as f:
+        json.dump(article, f, ensure_ascii=False, indent=2)
+    return slug
+
+
+def generate_guide(cfg: dict, category_override: str | None = None) -> None:
+    """Generate one original, web-search-grounded evergreen guide article,
+    targeting the thinnest category by default (or a specific one via
+    --guide-category)."""
+    category_id = category_override if category_override in cfg["categories"] else pick_thinnest_category(cfg)
+    cat_label = cfg["categories"][category_id]["label"]
+    print(f"[{cfg['site_name']}] generating an evergreen guide for category: {cat_label} ({category_id})")
+
+    avoid_topics = load_existing_guide_topics(category_id)
+    if avoid_topics:
+        print(f"  avoiding {len(avoid_topics)} existing guide topic(s) already covered in this category")
+
+    prompt = build_guide_prompt(cfg, category_id, avoid_topics)
+    print("  researching and writing (uses live web search — this can take a minute or two)…")
+    raw = call_claude(cfg, prompt,
+                       tools=[{"type": "web_search_20250305", "name": "web_search"}],
+                       max_tokens_override=8000)
+    written = parse_json_object(raw)
+    if not written:
+        print("  Could not parse a guide from the model's response. Nothing saved. "
+              "(Rerun — this is usually transient.)")
+        return
+
+    slug = save_guide(cfg, written, category_id)
+    if slug:
+        print(f"  [new guide] {written.get('headline', '')[:70]}")
+        print(f"  saved to content/articles/{datetime.now(timezone.utc).strftime('%Y/%m')}/{slug}.json")
+    else:
+        print("  Guide response was missing a headline or body. Nothing saved.")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Good-news pipeline")
     ap.add_argument("--check-feeds", action="store_true")
@@ -826,6 +991,11 @@ def main() -> None:
                      help="one-time: rewrite existing articles to professional length from their full source")
     ap.add_argument("--rewrite-limit", type=int, default=None,
                      help="cap how many articles --rewrite-articles processes in one run")
+    ap.add_argument("--generate-guide", action="store_true",
+                     help="generate one original, web-search-grounded evergreen guide article "
+                          "(a 'наръчник'), targeting the thinnest category by default")
+    ap.add_argument("--guide-category", type=str, default=None,
+                     help="override which category --generate-guide targets (defaults to the thinnest)")
     ap.add_argument("--force", action="store_true", help="skip the duplicate-trigger cooldown check")
     args = ap.parse_args()
 
@@ -838,6 +1008,9 @@ def main() -> None:
         return
     if args.rewrite_articles:
         rewrite_articles(cfg, limit=args.rewrite_limit)
+        return
+    if args.generate_guide:
+        generate_guide(cfg, category_override=args.guide_category)
         return
     if args.list_candidates:
         print(f"[{cfg['site_name']}] listing every candidate in the last 72h "
