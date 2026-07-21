@@ -25,6 +25,14 @@ on:
         description: "One-time: rewrite existing articles to professional length from their full source (preserves URLs & dates)"
         type: boolean
         default: false
+      generate_guide:
+        description: "One-off: generate one original, web-search-grounded evergreen guide (наръчник) instead of publishing daily news. Targets the thinnest category unless you set guide_category below."
+        type: boolean
+        default: false
+      guide_category:
+        description: "Optional, only used with generate_guide: category id to target (e.g. zdrave, priroda, sport). Leave blank to auto-pick the thinnest category."
+        type: string
+        default: ""
   push:
     branches: [main]              # deploys design/content edits without the AI step
 
@@ -73,8 +81,19 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python pipeline.py --recover
 
+      - name: Generate an evergreen guide article (one-off)
+        if: github.event.inputs.generate_guide == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "${{ github.event.inputs.guide_category }}" ]; then
+            python pipeline.py --generate-guide --guide-category "${{ github.event.inputs.guide_category }}"
+          else
+            python pipeline.py --generate-guide
+          fi
+
       - name: Fetch and write new stories (AI pipeline)
-        if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true' && github.event.inputs.check_feeds != 'true' && github.event.inputs.recover != 'true' && github.event.inputs.list_candidates != 'true' && github.event.inputs.rewrite_articles != 'true' && github.event.inputs.rewrite_articles != 'true'
+        if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true' && github.event.inputs.check_feeds != 'true' && github.event.inputs.recover != 'true' && github.event.inputs.list_candidates != 'true' && github.event.inputs.rewrite_articles != 'true' && github.event.inputs.generate_guide != 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python pipeline.py
