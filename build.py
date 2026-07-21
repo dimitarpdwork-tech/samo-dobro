@@ -563,10 +563,10 @@ def meta_row(site, a, with_cat=True) -> str:
             f' · {reading_time(a["body"])} {ui["min_read"]}</div>')
 
 
-def card(site, a) -> str:
+def card(site, a, eager=False) -> str:
     href = site.u(site.article_path(a))
     return f"""<article class="card">
-<a href="{href}" aria-label="{esc(a['headline'])}">{media(site.cfg, a, site.cfg['ui'])}</a>
+<a href="{href}" aria-label="{esc(a['headline'])}">{media(site.cfg, a, site.cfg['ui'], eager=eager)}</a>
 <div class="cbody">
 <h3><a href="{href}">{esc(a['headline'])}</a></h3>
 <p>{esc(a['summary_short'])}</p>
@@ -655,7 +655,10 @@ def build_lists(site) -> None:
             body += f'<div class="sec"><h2>{esc(label)}</h2><span class="rule"></span></div>'
             if intro and p == 1:
                 body = f'<p class="cat-intro">{esc(intro)}</p>' + body
-            body += '<div class="grid">' + "".join(card(site, a) for a in rest) + "</div>"
+            is_home_p1 = (key == "home" and p == 1)
+            body += '<div class="grid">' + "".join(
+                card(site, a, eager=(is_home_p1 and i == 0)) for i, a in enumerate(rest)
+            ) + "</div>"
             body += pager(site, base_path, p, pages)
             jsonld = None
             if key == "home" and p == 1:
