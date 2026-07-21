@@ -379,11 +379,16 @@ def org_ld(site) -> dict:
             "sameAs": cfg.get("same_as", [])}
 
 
-def person_ld(site) -> dict | None:
+def author_ld(site) -> dict:
+    """Article authorship is always attributed to the automated editorial
+    system as an Organization, never to a fabricated human Person — see
+    /<about_path>/#editorial-process for the disclosed process. Set
+    'byline_name' in config.json to customize the displayed name (defaults
+    to '<site_name> AI Editorial System')."""
     cfg = site.cfg
-    if not cfg.get("editor_name"):
-        return None
-    return {"@type": "Person", "name": cfg["editor_name"], "jobTitle": cfg.get("editor_title", "Editor")}
+    name = cfg.get("byline_name", f'{cfg["site_name"]} AI Editorial System')
+    return {"@type": "Organization", "name": name,
+            "url": site.abs_(f'/{cfg["about_path"]}/#editorial-process')}
 
 
 def verification_tags(cfg) -> str:
@@ -745,7 +750,7 @@ def build_articles(site) -> None:
 <a class="backlink" href="{site.u('/')}">← {esc(ui['back_home'])}</a>
 {meta_row(site, a)}
 <h1>{esc(a['headline'])}</h1>
-{f'<span class="byline">{esc(ui.get("editor_label", "Editor:"))} {esc(cfg["editor_name"])}</span>' if cfg.get('editor_name') else ''}
+<span class="byline">{esc(ui.get('byline_label', 'Compiled by'))} {esc(cfg.get('byline_name', cfg['site_name'] + ' AI'))} · <a href="{site.u('/' + cfg['about_path'] + '/#editorial-process')}">{esc(ui.get('how_it_works', 'How this works'))}</a></span>
 {f'<span class="ai-badge">{esc(ui.get("ai_badge", "AI-summarized"))}</span>' if not a.get('no_ai_badge') else ''}
 <div class="banner">{media(cfg, a, ui, height=250, eager=True)}</div>
 <div class="body">{paras}</div>
@@ -763,7 +768,7 @@ def build_articles(site) -> None:
               "inLanguage": cfg["lang"], "articleSection": cat["label"],
               "mainEntityOfPage": site.abs_(path),
               "image": [a["photo_url"]] if a.get("photo_url") else [site.abs_("/assets/og-default.png")],
-              "author": person_ld(site) or org_ld(site), "publisher": org_ld(site)}
+              "author": author_ld(site), "publisher": org_ld(site)}
         if a.get("source_url"):
             ld["isBasedOn"] = a["source_url"]
         write(DIST / path.strip("/") / "index.html",
@@ -802,12 +807,9 @@ def build_about(site) -> None:
     secs = "".join(
         f'<h2>{esc(h)}</h2><p>{esc(t.format(site=cfg["site_name"], email=cfg["contact_email"]))}</p>'
         for h, t in ABOUT[cfg["lang"]])
-    editor = ""
-    if cfg.get("editor_name"):
-        editor = (f'<div class="editor-card">'
-                  f'<div class="editor-name">{esc(cfg["editor_name"])}</div>'
-                  f'<div class="editor-title">{esc(cfg.get("editor_title", ""))}</div>'
-                  f'<p>{esc(cfg.get("editor_bio", ""))}</p></div>')
+    editor = (f'<div class="editor-card" id="editorial-process">'
+              f'<div class="editor-title">{esc(cfg["ui"].get("editorial_process_label", "Editorial process"))}</div>'
+              f'<p>{esc(cfg.get("editorial_process_note", ""))}</p></div>')
     body = f'<div class="about"><h1>{esc(cfg["ui"]["about"])} · {esc(cfg["site_name"])}</h1>{editor}{secs}</div>'
     path = f'/{cfg["about_path"]}/'
     write(DIST / cfg["about_path"] / "index.html",
