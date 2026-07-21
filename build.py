@@ -812,9 +812,14 @@ def build_about(site) -> None:
               f'<p>{esc(cfg.get("editorial_process_note", ""))}</p></div>')
     body = f'<div class="about"><h1>{esc(cfg["ui"]["about"])} · {esc(cfg["site_name"])}</h1>{editor}{secs}</div>'
     path = f'/{cfg["about_path"]}/'
+    jsonld = [{"@context": "https://schema.org", "@type": "AboutPage",
+               "name": f'{cfg["ui"]["about"]} · {cfg["site_name"]}',
+               "url": site.abs_(path),
+               "description": cfg.get("editorial_process_note", cfg["description"]),
+               "mainEntity": org_ld(site)}]
     write(DIST / cfg["about_path"] / "index.html",
           base_page(site, title=f'{cfg["ui"]["about"]} · {cfg["site_name"]}',
-                    description=cfg["description"], path=path, body=body))
+                    description=cfg["description"], path=path, body=body, jsonld=jsonld))
 
 
 PRIVACY = {
@@ -902,13 +907,11 @@ def build_sitemap(site) -> None:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     urls = [(site.abs_("/"), now), (site.abs_(f'/{cfg["about_path"]}/'), now),
             (site.abs_(f'/{cfg["privacy_path"]}/'), now)]
-    home_pages = max(1, -(-len(site.articles) // PAGE_SIZE))
-    urls += [(site.abs_(f'/page/{p}/'), now) for p in range(2, home_pages + 1)]
+    # Note: page 2+ (home and category) are intentionally excluded here — they
+    # carry noindex and stay reachable only via in-page pagination links, so
+    # the sitemap doesn't send Google a mixed noindex-but-submitted signal.
     for cid in cfg["categories"]:
-        arts = [a for a in site.articles if a["category"] == cid]
         urls.append((site.abs_(site.cat_path(cid)), now))
-        pages = max(1, -(-len(arts) // PAGE_SIZE))
-        urls += [(site.abs_(f'{site.cat_path(cid)}page/{p}/'), now) for p in range(2, pages + 1)]
     def _lastmod(a):
         return (a.get("updated") or "")[:10] or a["_dt"].strftime("%Y-%m-%d")
     urls += [(site.abs_(site.article_path(a)), _lastmod(a)) for a in site.articles]
