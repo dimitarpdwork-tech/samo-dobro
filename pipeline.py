@@ -909,7 +909,8 @@ Respond with ONLY a JSON object, nothing else:
   "summary_short": "<max 170 chars teaser>",
   "body": "<the full guide, paragraphs/headings separated by \\n\\n, per the structure above>",
   "quick_facts": ["<3-5 short standalone facts, in {cfg['language_name']}>"],
-  "tags": ["<4-6 lowercase tags, no spaces, in {cfg['language_name']}>"]
+  "tags": ["<4-6 lowercase tags, no spaces, in {cfg['language_name']}>"],
+  "image_query": "<2-4 words English, a GENERIC topic/scene for stock photo search matching this guide's overall subject — e.g. 'mountain forest hiking' or 'hospital doctor patient'. Never a real person's name or a specific claimed location.>"
 }}"""
 
 
@@ -938,6 +939,9 @@ def save_guide(cfg: dict, written: dict, category_id: str) -> str | None:
         "lang": cfg["lang"],
         "pillar": True,
     }
+    photo = find_stock_photo(cfg, written.get("image_query", ""))
+    if photo:
+        article.update(photo)
     out_dir = CONTENT_DIR / now.strftime("%Y") / now.strftime("%m")
     out_dir.mkdir(parents=True, exist_ok=True)
     with open(out_dir / f"{slug}.json", "w", encoding="utf-8") as f:
