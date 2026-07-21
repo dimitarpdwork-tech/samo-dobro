@@ -28,7 +28,7 @@ import html
 import json
 import re
 import shutil
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from email.utils import format_datetime
 from pathlib import Path
 from string import Template
@@ -223,7 +223,7 @@ font-family:var(--fl);font-size:.8rem;letter-spacing:.03em}
 
 /* section title */
 .sec{display:flex;align-items:baseline;gap:14px;margin:6px 0 18px}
-.sec h2{font-family:var(--fd);font-weight:800;font-size:1.35rem;margin:0;letter-spacing:-.01em}
+.sec h2,.sec h1{font-family:var(--fd);font-weight:800;font-size:1.35rem;margin:0;letter-spacing:-.01em}
 .sec .rule{flex:1;height:5px;border-radius:99px;background:linear-gradient(90deg,var(--p),var(--glow) 55%,transparent)}
 body.brand-globe .sec .rule{height:2px;background:linear-gradient(90deg,var(--t) 0 64px,var(--line) 64px);position:relative}
 .cat-intro{color:var(--muted);font-size:1.02rem;line-height:1.6;max-width:64ch;margin:4px 0 20px}
@@ -387,17 +387,43 @@ def card_art(cfg, article, height=180) -> str:
             f'<text x="320" y="160" font-size="72" text-anchor="middle" dominant-baseline="central">{cat["emoji"]}</text></svg>')
 
 
-def media(cfg, article, ui, height=180, eager=False) -> str:
+def pexels_resize(url: str, width: int) -> str:
+    """Return a Pexels image URL requesting `width`, preserving the image's
+    natural aspect ratio and any other query parameters. Used to request a
+    size that actually matches where the image is displayed (thumbnail vs.
+    full-width banner vs. schema/OG image) instead of one fixed width
+    everywhere, and to build srcset candidates.
+    Both any existing w= AND h= params are stripped before adding the new
+    w= — leaving a fixed h= from the pipeline in place while only changing
+    w= would make Pexels crop to a distorted aspect ratio at smaller widths.
+    Client-side object-fit:cover already handles final cropping to fit each
+    container, so no server-side height constraint is needed here."""
+    if "images.pexels.com" not in url:
+        return url
+    base, _, query = url.partition("?")
+    params = [p for p in query.split("&") if p and not p.startswith(("w=", "h="))]
+    params.append(f"w={width}")
+    return f"{base}?{'&'.join(params)}"
+
+
+def media(cfg, article, ui, height=180, eager=False,
+          sizes="(max-width: 700px) 100vw, 292px") -> str:
     """Real stock photo when the pipeline found one, generated SVG art otherwise.
     Photo credit is a hard requirement of the free API's terms, not optional.
     eager=True skips lazy-loading — use this only for the one above-the-fold
-    image per page (the article's own banner), never for listing thumbnails."""
+    image per page (the article's own banner), never for listing thumbnails.
+    `sizes` should describe the actual rendered width in this context so the
+    browser can pick the right srcset candidate — pass a wider value for the
+    full-width article banner than for grid thumbnails."""
     if article.get("photo_url"):
+        base_url = article["photo_url"]
+        srcset = ", ".join(f"{esc(pexels_resize(base_url, w))} {w}w" for w in (400, 800, 1200))
         credit = (f'<a class="photo-credit" href="{esc(article["photo_credit_url"])}" '
                   f'target="_blank" rel="noopener">{esc(ui.get("photo_by", "Photo:"))} {esc(article["photo_credit"])} · Pexels</a>')
         loading_attr = '' if eager else ' loading="lazy"'
         return (f'<div class="thumb" style="height:{height}px">'
-                f'<img src="{esc(article["photo_url"])}" alt="{esc(article["headline"])}"{loading_attr}>'
+                f'<img src="{esc(pexels_resize(base_url, 800))}" srcset="{srcset}" sizes="{esc(sizes)}" '
+                f'alt="{esc(article["headline"])}"{loading_attr}>'
                 f'{credit}</div>')
     return card_art(cfg, article, height)
 
@@ -710,7 +736,8 @@ def build_lists(site) -> None:
                 body += hero(site, hero_article)
                 rest = [a for a in chunk if a["slug"] != hero_article["slug"]]
             label = ui["latest"] if key == "home" else f'{cfg["categories"][key]["emoji"]} {cfg["categories"][key]["label"]}'
-            body += f'<div class="sec"><h2>{esc(label)}</h2><span class="rule"></span></div>'
+            heading_tag = "h2" if key == "home" else "h1"
+            body += f'<div class="sec"><{heading_tag}>{esc(label)}</{heading_tag}><span class="rule"></span></div>'
             if intro and p == 1:
                 body = f'<p class="cat-intro">{esc(intro)}</p>' + body
             is_home_p1 = (key == "home" and p == 1)
@@ -824,7 +851,7 @@ def build_tags(site) -> set:
         for p in range(1, pages + 1):
             chunk = arts[(p - 1) * PAGE_SIZE: p * PAGE_SIZE]
             title = f'#{display} · {cfg["site_name"]}'
-            body = f'<div class="sec"><h2>#{esc(display)}</h2><span class="rule"></span></div>'
+            body = f'<div class="sec"><h1>#{esc(display)}</h1><span class="rule"></span></div>'
             body += '<div class="grid">' + "".join(card(site, a) for a in chunk) + "</div>"
             body += pager(site, base_path, p, pages)
             jsonld = None
@@ -882,7 +909,7 @@ def build_articles(site, linked_tags: set) -> None:
 <h1>{esc(a['headline'])}</h1>
 <span class="byline">{esc(ui.get('byline_label', 'Compiled by'))} {esc(cfg.get('byline_name', cfg['site_name'] + ' AI'))} · <a href="{site.u('/' + cfg['about_path'] + '/#editorial-process')}">{esc(ui.get('how_it_works', 'How this works'))}</a></span>
 {f'<span class="ai-badge">{esc(ui.get("ai_badge", "AI-summarized"))}</span>' if not a.get('no_ai_badge') else ''}
-<div class="banner">{media(cfg, a, ui, height=250, eager=True)}</div>
+<div class="banner">{media(cfg, a, ui, height=250, eager=True, sizes="(max-width: 760px) 100vw, 720px")}</div>
 <div class="body">{paras}</div>
 {f'<div class="tags">{tags}</div>' if tags else ''}
 {src}
@@ -892,12 +919,13 @@ def build_articles(site, linked_tags: set) -> None:
         path = site.article_path(a)
         crumbs = [(ui["home"], site.abs_("/")), (cat["label"], site.abs_(site.cat_path(a["category"]))),
                   (a["headline"], site.abs_(path))]
+        rich_image = pexels_resize(a["photo_url"], 1200) if a.get("photo_url") else site.abs_("/assets/og-default.png")
         ld = {"@context": "https://schema.org", "@type": "NewsArticle",
               "headline": a["headline"], "description": a["meta_description"],
               "datePublished": a["published"], "dateModified": a.get("rewritten") or a.get("updated", a["published"]),
               "inLanguage": cfg["lang"], "articleSection": cat["label"],
               "mainEntityOfPage": site.abs_(path),
-              "image": [a["photo_url"]] if a.get("photo_url") else [site.abs_("/assets/og-default.png")],
+              "image": [rich_image],
               "author": author_ld(site), "publisher": org_ld(site)}
         if a.get("source_url"):
             ld["isBasedOn"] = a["source_url"]
@@ -905,7 +933,7 @@ def build_articles(site, linked_tags: set) -> None:
               base_page(site, title=f'{a["headline"]} · {cfg["site_name"]}',
                         description=a["meta_description"] or a["summary_short"],
                         path=path, body=body, jsonld=[ld, breadcrumb_ld(site, crumbs)], og_type="article",
-                        og_image=a.get("photo_url", "/assets/og-default.png")))
+                        og_image=rich_image))
 
 
 ABOUT = {
@@ -1032,6 +1060,59 @@ def build_feed(site) -> None:
     write(DIST / "feed.xml", feed)
 
 
+def build_news_sitemap(site) -> None:
+    """Publish news-sitemap.xml per Google's News Sitemap protocol — only
+    articles published within the last 48 hours. Google explicitly requires
+    removing older entries; keeping stale URLs in reduces the sitemap's
+    trustworthiness rather than just being harmlessly ignored. Worth having
+    given this pipeline publishes 10-40 articles/day. Referenced via a
+    second Sitemap: line in robots.txt (multiple Sitemap: directives are
+    valid per the Sitemaps protocol)."""
+    cfg = site.cfg
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+    recent = [a for a in site.articles if a["_dt"] >= cutoff]
+    items = ""
+    for a in recent:
+        pub_date = a["_dt"].strftime("%Y-%m-%dT%H:%M:%S+00:00")
+        items += (f"<url><loc>{esc(site.abs_(site.article_path(a)))}</loc>"
+                  f"<news:news><news:publication>"
+                  f"<news:name>{esc(cfg['site_name'])}</news:name>"
+                  f"<news:language>{esc(cfg['lang'])}</news:language>"
+                  f"</news:publication>"
+                  f"<news:publication_date>{pub_date}</news:publication_date>"
+                  f"<news:title>{esc(a['headline'])}</news:title>"
+                  f"</news:news></url>")
+    write(DIST / "news-sitemap.xml",
+          f'<?xml version="1.0" encoding="UTF-8"?>'
+          f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
+          f'xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">{items}</urlset>')
+
+
+def build_rsl(site) -> None:
+    """Publish a minimal RSL 1.0 license (rslstandard.org/rsl) making the
+    site's existing, actual stance machine-readable: robots.txt already
+    allows all major AI crawlers (GPTBot, ClaudeBot, PerplexityBot,
+    Google-Extended, CCBot) and llms.txt already discloses AI involvement —
+    so this permits AI/search use broadly, conditioned on attribution,
+    rather than inventing a new policy."""
+    cfg = site.cfg
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<rsl xmlns="https://rslstandard.org/rsl">
+  <content url="/">
+    <license>
+      <permits type="usage">all</permits>
+      <payment type="attribution">
+        <standard>https://creativecommons.org/licenses/by/4.0/</standard>
+      </payment>
+    </license>
+    <copyright type="organization" contactEmail="{esc(cfg['contact_email'])}">{esc(cfg['site_name'])}</copyright>
+    <terms>{esc(site.abs_(f'/{cfg["about_path"]}/'))}</terms>
+  </content>
+</rsl>
+"""
+    write(DIST / "rsl.xml", xml)
+
+
 def build_sitemap(site, tag_slugs: set) -> None:
     cfg = site.cfg
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -1052,7 +1133,10 @@ def build_sitemap(site, tag_slugs: set) -> None:
     write(DIST / "sitemap.xml",
           f'<?xml version="1.0" encoding="UTF-8"?>'
           f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{body}</urlset>')
-    write(DIST / "robots.txt", f"User-agent: *\nAllow: /\n\nSitemap: {site.abs_('/sitemap.xml')}\n")
+    write(DIST / "robots.txt",
+          f"License: {site.abs_('/rsl.xml')}\nUser-agent: *\nAllow: /\n\n"
+          f"Sitemap: {site.abs_('/sitemap.xml')}\n"
+          f"Sitemap: {site.abs_('/news-sitemap.xml')}\n")
 
     key = cfg.get("indexnow_key", "")
     if key:
@@ -1126,6 +1210,8 @@ def main() -> None:
     build_404(site)
     build_feed(site)
     build_sitemap(site, qualifying_tag_slugs)
+    build_news_sitemap(site)
+    build_rsl(site)
     build_llms_txt(site)
     print(f"[{cfg['site_name']}] built {len(articles)} articles → {DIST}")
 
