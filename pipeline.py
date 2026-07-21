@@ -237,11 +237,28 @@ CANDIDATES
 
 def build_writing_prompt(cfg: dict, story: dict, full_text: str | None) -> str:
     """Phase 2: write ONE article, ideally from the full source text. Uniqueness
-    rules are explicit so articles don't read as templated."""
+    rules are explicit so articles don't read as templated. The lede and
+    quick-facts rules exist so AI search/answer engines have a self-contained,
+    citable passage near the top of the page instead of only a narrative
+    opening — see the GEO section of the SEO audit."""
     source_block = (
         f"FULL SOURCE ARTICLE (write from this):\n{full_text}"
         if full_text else
         f"SOURCE SUMMARY (only this snippet is available):\n{clean_text(story.get('summary',''), 600)}"
+    )
+    lede_rule = (
+        "- The FIRST paragraph MUST be a self-contained, answer-first passage of "
+        "approximately 140-160 words that fully conveys what happened, who it "
+        "involves, and why it matters — written so it could stand alone as a "
+        "quote or AI-generated summary without needing the rest of the article. "
+        "Vary its phrasing and angle story-to-story (lead with the outcome, a "
+        "striking detail, or the human stakes) but always make it complete on "
+        "its own."
+        if full_text else
+        "- Open with the single most important fact from the snippet, as a "
+        "self-contained sentence or two. Don't pad it toward 140-160 words if "
+        "the snippet doesn't support it — a short honest opening beats a "
+        "padded one."
     )
     return f"""You are the editor of "{cfg['site_name']}", writing one good-news article in {cfg['language_name']}.
 
@@ -253,11 +270,14 @@ SOURCE: {story['source']}
 Write an original article in {cfg['language_name']}. Rules:
 - Use ONLY facts present in the source above. Never invent numbers, names, quotes, or dates.
 - Include 2-3 CONCRETE specific details from the source (a number, a place, a name, a circumstance) — this is what makes the piece real rather than generic.
-- VARY your opening: sometimes lead with the outcome, sometimes a striking detail, sometimes the human stakes. Do not always open the same way.
+{lede_rule}
+- After the lede, add 1-2 shorter paragraphs of supporting context or narrative — don't just repeat the lede in different words.
 - Find the actual STORY beyond the headline — what does the full source reveal that the headline alone wouldn't tell someone?
 - Warm, human, concrete tone. Hopeful, never saccharine or clickbaity.
-- {"180-260 words" if full_text else "130-180 words (snippet is thin, don't pad with filler)"}.
+- {"300-380 words total" if full_text else "150-200 words total (snippet is thin, don't pad with filler)"}.
 - Native-level {cfg['language_name']}. Never invent words. Check noun-adjective gender/number agreement. Never use Russian spellings or words.
+
+Also extract 3-5 short "quick facts" — standalone phrases (not full sentences, under ~12 words each) pulling out the concrete who/what/where/when/how-much details from the source. These appear in a bullet box at the top of the article, so each one must be fully understandable on its own without reading the article body.
 
 Respond with ONLY a JSON object, nothing else:
 {{
@@ -266,7 +286,8 @@ Respond with ONLY a JSON object, nothing else:
   "category": "<one id from: {', '.join(cfg['categories'].keys())}>",
   "meta_description": "<max 155 chars>",
   "summary_short": "<max 160 chars teaser>",
-  "body": "<the article, paragraphs separated by \\n\\n>",
+  "body": "<the article, paragraphs separated by \\n\\n — first paragraph is the answer-first lede>",
+  "quick_facts": ["<3-5 short standalone facts, in {cfg['language_name']}>"],
   "tags": ["<3-5 lowercase tags, no spaces>"],
   "image_query": "<2-4 words English, generic scene for stock photo, never a real person's name>"
 }}"""
@@ -285,63 +306,6 @@ def parse_json_object(raw: str) -> dict | None:
         return obj if isinstance(obj, dict) else None
     except json.JSONDecodeError:
         return None
-    cat_lines = "\n".join(
-        f'- "{cid}": {c["label"]}' for cid, c in cfg["categories"].items()
-    )
-    cand_lines = "\n".join(
-        f'{i}. [{c["source"]}] {c["title"]} — {c["summary"] or "(no summary)"}'
-        for i, c in enumerate(candidates)
-    )
-    recent_block = ""
-    if recent_headlines:
-        recent_list = "\n".join(f"- {h}" for h in recent_headlines[:60])
-        recent_block = f"""
-ALREADY PUBLISHED — DO NOT DUPLICATE
-These headlines were already published recently. If a candidate below covers the same real-world event or story as any of these (even from a different source outlet), REJECT it rather than writing it again:
-{recent_list}
-"""
-    return f"""You are the sole editor of "{cfg['site_name']}", a news site that publishes ONLY genuinely good, uplifting news, written in {cfg['language_name']}.
-
-Below is a numbered list of raw news candidates pulled from RSS feeds.
-
-YOUR TASK
-1. Select at most {max_new} candidates that are GENUINELY positive: concrete good outcomes, kindness, recoveries of nature, scientific or medical breakthroughs, community wins, cultural achievements, records of human generosity or skill.
-2. REJECT anything whose core is negative even if framed positively: war, crime, accidents, disasters, deaths, disease outbreaks, scandals, court cases, party politics, election results, celebrity gossip, advertising/PR, financial speculation. When in doubt, reject. Selecting zero is a valid answer.
-3. For each selected story, write an ORIGINAL article in {cfg['language_name']}.
-{recent_block}
-STRICT WRITING RULES
-- Use ONLY facts present in the candidate's title/summary above. Never invent numbers, names, quotes, dates or details. If the snippet is too thin to write 2 short paragraphs honestly, reject it.
-- Write completely in your own words. Do not copy or closely paraphrase the source phrasing.
-- Tone: warm, human, concrete. Hopeful but never saccharine or clickbaity.
-- The reader should finish the story feeling lighter.
-
-LANGUAGE QUALITY BAR — THIS IS NON-NEGOTIABLE
-- Write in fully correct, natural, native-level {cfg['language_name']}, as a professional native-speaking editor would.
-- NEVER invent a word that does not exist in {cfg['language_name']}. If you are not completely certain a word is real and correctly spelled, use a simpler word you are certain of instead.
-- Check every noun-adjective pair for correct grammatical gender/number agreement before finalizing (this is a common failure point — verify it explicitly).
-- Do not borrow spellings or vocabulary from a closely related language (e.g. when writing Bulgarian, never use Russian spellings or words — the two are related but distinct, and mixing them is a real, disqualifying error).
-- After drafting each article, re-read it once specifically to check for grammar and invented words before including it in your output. If any sentence feels uncertain, simplify it rather than risk an error.
-- Respectful, neutral phrasing for gender and identity: describe achievements plainly (e.g. "first woman [role]") — never use a gendered adjective to modify a person's professional title or role in a way that could read as diminishing.
-
-OUTPUT FORMAT
-Respond with ONLY a JSON array (no markdown fences, no commentary). Each element:
-{{
-  "candidate": <number from the list>,
-  "headline": "<max 75 characters, in {cfg['language_name']}>",
-  "slug_hint": "<3-6 latin lowercase words separated by hyphens>",
-  "category": "<one id from the category list below>",
-  "meta_description": "<max 155 characters, in {cfg['language_name']}>",
-  "summary_short": "<max 160 characters teaser, in {cfg['language_name']}>",
-  "body": "<3-4 short paragraphs separated by \\n\\n, aim for 150-190 words total — this length matters, don't undershoot it, in {cfg['language_name']}>",
-  "tags": ["<3-5 short tags in {cfg['language_name']}, lowercase, single words or hyphenated phrases, NEVER containing spaces>"],
-  "image_query": "<2-4 words in English, a GENERIC topic/scene for a stock-photo search — e.g. 'beekeeping apiary' or 'football stadium crowd'. NEVER a real person's name or a specific claimed location; this must describe the general subject only, since the photo returned will be illustrative stock imagery, not a picture of the actual people or place in the story>"
-}}
-
-CATEGORY IDS
-{cat_lines}
-
-CANDIDATES
-{cand_lines}"""
 
 
 def call_claude(cfg: dict, prompt: str) -> str:
@@ -521,6 +485,7 @@ def save_articles(cfg: dict, items: list[dict], candidates: list[dict], seen: di
             "body": body,
             "category": category,
             "tags": [clip(t, 30) for t in (item.get("tags") or [])[:5]],
+            "quick_facts": [c for c in (clip(f, 120) for f in (item.get("quick_facts") or [])[:5]) if c],
             "source_name": cand["source"],
             "source_url": cand["link"],
             "published": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -714,6 +679,7 @@ def save_one_written(cfg: dict, written: dict, cand: dict, seen: dict) -> str | 
         "summary_short": clip(written.get("summary_short", ""), 170),
         "body": body, "category": category,
         "tags": [clip(t, 30) for t in (written.get("tags") or [])[:5]],
+        "quick_facts": [c for c in (clip(f, 120) for f in (written.get("quick_facts") or [])[:5]) if c],
         "source_name": cand["source"], "source_url": cand["link"],
         "published": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "lang": cfg["lang"],
     }
@@ -831,6 +797,8 @@ def rewrite_articles(cfg: dict, limit: int | None = None) -> None:
         art["category"] = category
         if written.get("tags"):
             art["tags"] = [clip(t, 30) for t in written["tags"][:5]]
+        if written.get("quick_facts"):
+            art["quick_facts"] = [c for c in (clip(f, 120) for f in written["quick_facts"][:5]) if c]
         art["rewritten"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         # slug, id, published, photo_* all deliberately left as-is.
 
