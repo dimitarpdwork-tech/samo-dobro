@@ -340,18 +340,29 @@ Write an original article in {cfg['language_name']}. Rules:
 
 Also extract 3-5 short "quick facts" — standalone phrases (not full sentences, under ~12 words each) pulling out the concrete who/what/where/when/how-much details from the source. These appear in a bullet box at the top of the article, so each one must be fully understandable on its own without reading the article body.
 
-Respond with ONLY a JSON object, nothing else:
-{{
-  "headline": "<max 75 chars, in {cfg['language_name']}>",
-  "slug_hint": "<3-6 latin lowercase words, hyphenated>",
-  "category": "<one id from: {', '.join(cfg['categories'].keys())}>",
-  "meta_description": "<max 155 chars>",
-  "summary_short": "<max 160 chars teaser>",
-  "body": "<the article, paragraphs separated by \\n\\n — first paragraph is the answer-first lede>",
-  "quick_facts": ["<3-5 short standalone facts, in {cfg['language_name']}>"],
-  "tags": ["<3-5 lowercase tags, no spaces>"],
-  "image_query": "<2-4 words English, generic scene for stock photo, never a real person's name>"
-}}"""
+Respond using EXACTLY this plain-text format — nothing before or after it. Do NOT use JSON. This format exists specifically so that quotes, apostrophes, and other punctuation in your writing can never break parsing the way an unescaped quote inside a JSON string would:
+
+===HEADLINE===
+<max 75 chars, in {cfg['language_name']}>
+===SLUG===
+<3-6 latin lowercase words, hyphenated>
+===CATEGORY===
+<one id from: {', '.join(cfg['categories'].keys())}>
+===META_DESCRIPTION===
+<max 155 chars>
+===SUMMARY_SHORT===
+<max 160 chars teaser>
+===BODY===
+<the article — first paragraph is the answer-first lede, with one fully blank line between each paragraph>
+===QUICK_FACTS===
+<first fact>
+<second fact>
+<third fact>
+===TAGS===
+<tag one, tag two, tag three>
+===IMAGE_QUERY===
+<2-4 words English, generic scene for stock photo, never a real person's name>
+===END==="""
 
 
 def parse_json_object(raw: str) -> dict | None:
@@ -367,6 +378,44 @@ def parse_json_object(raw: str) -> dict | None:
         return obj if isinstance(obj, dict) else None
     except json.JSONDecodeError:
         return None
+
+
+def parse_delimited_article(raw: str) -> dict | None:
+    """Parse the ===FIELD=== delimited format used by build_writing_prompt().
+    Deliberately NOT JSON: a real, recurring fraction of JSON-formatted
+    responses were failing to parse (and therefore being paid for and
+    discarded) once the added-value/opinion paragraphs made the writing
+    style more natural — almost certainly from unescaped quotes/apostrophes
+    inside the generated prose breaking JSON's string syntax. Extracting
+    plain text between distinctive markers can't be broken by punctuation
+    at all, since there's no escaping involved."""
+    text = raw.strip()
+    text = re.sub(r"^```\w*", "", text).strip()
+    text = re.sub(r"```$", "", text).strip()
+
+    def extract(field: str) -> str:
+        m = re.search(rf"==={field}===\s*\n(.*?)(?=\n===[A-Z_]+===|\Z)", text, re.DOTALL)
+        return m.group(1).strip() if m else ""
+
+    headline = extract("HEADLINE")
+    body = extract("BODY")
+    if not headline or not body:
+        return None
+
+    quick_facts = [line.strip() for line in extract("QUICK_FACTS").split("\n") if line.strip()]
+    tags = [t.strip() for t in extract("TAGS").split(",") if t.strip()]
+
+    return {
+        "headline": headline,
+        "slug_hint": extract("SLUG"),
+        "category": extract("CATEGORY"),
+        "meta_description": extract("META_DESCRIPTION"),
+        "summary_short": extract("SUMMARY_SHORT"),
+        "body": body,
+        "quick_facts": quick_facts,
+        "tags": tags,
+        "image_query": extract("IMAGE_QUERY"),
+    }
 
 
 def call_claude(cfg: dict, prompt: str, tools: list[dict] | None = None,
@@ -818,7 +867,7 @@ def run_two_phase(cfg: dict, candidates: list[dict], seen: dict, max_new: int) -
         full_text = fetch_full_article(cand["link"])
         tag = "full source" if full_text else "snippet only"
         write_prompt = build_writing_prompt(cfg, cand, full_text, use_search=context_search)
-        written = parse_json_object(call_claude(cfg, write_prompt, tools=search_tools, hard_fail=False))
+        written = parse_delimited_article(call_claude(cfg, write_prompt, tools=search_tools, hard_fail=False))
         if not written:
             print(f"    [skip] writing failed for: {cand['title'][:55]}")
             continue
@@ -897,7 +946,7 @@ def rewrite_articles(cfg: dict, limit: int | None = None, force: bool = False) -
                   "summary": art.get("summary_short", ""), "link": src_url}
         context_search = cfg.get("context_search", False)
         search_tools = [{"type": "web_search_20250305", "name": "web_search"}] if context_search else None
-        written = parse_json_object(call_claude(
+        written = parse_delimited_article(call_claude(
             cfg, build_writing_prompt(cfg, pseudo, full_text, use_search=context_search),
             tools=search_tools, hard_fail=False))
         if not written or not (written.get("body") or "").strip():
