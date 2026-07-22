@@ -197,6 +197,11 @@ def fetch_full_article(url: str, timeout: int = 20) -> str | None:
         if not text:
             return None
         text = text.strip()
+        # Strip control/non-printable characters that occasionally survive
+        # extraction from arbitrary web pages (encoding artifacts, stray
+        # bytes) — these can make the API reject the request outright
+        # (400 Bad Request) rather than just rendering oddly.
+        text = "".join(ch for ch in text if ch in "\n\t" or (ord(ch) >= 32 and ord(ch) != 127))
         # Guard against junk: too short to be a real article, or absurdly long.
         if len(text) < 200:
             return None
@@ -359,7 +364,16 @@ def parse_json_object(raw: str) -> dict | None:
 
 
 def call_claude(cfg: dict, prompt: str, tools: list[dict] | None = None,
-                 max_tokens_override: int | None = None) -> str:
+                 max_tokens_override: int | None = None, hard_fail: bool = True) -> str:
+    """hard_fail=True (default): unrecoverable failure exits the whole process —
+    correct for single must-succeed calls like the daily selection phase.
+    hard_fail=False: unrecoverable failure returns "" instead — required for
+    any call made inside a per-item batch loop (rewriting/writing one of many
+    articles), so one bad article can never take the rest of the batch down
+    with it. A real production incident (one article's request got a
+    non-retryable 400 and killed an entire --rewrite-articles run partway
+    through, after already paying for several earlier calls) is exactly why
+    this distinction exists — see chat history."""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         print("ANTHROPIC_API_KEY is not set. Aborting.")
@@ -388,7 +402,20 @@ def call_claude(cfg: dict, prompt: str, tools: list[dict] | None = None,
         try:
             resp = requests.post(API_URL, headers=headers, json=body, timeout=180)
             if resp.status_code in (429, 500, 502, 503, 529):
+                # Genuinely transient — worth retrying with backoff.
                 raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+            if resp.status_code >= 400:
+                # Client errors (400/401/403/404/etc.) are NOT transient — the
+                # identical request will be rejected identically every time.
+                # Retrying 3x with backoff only burns minutes for zero chance
+                # of success. Fail immediately, and print the FULL error body
+                # (not truncated) since that's what actually explains what was
+                # wrong with the request.
+                print(f"  [api] non-retryable error, HTTP {resp.status_code} — not retrying:")
+                print(f"  {resp.text[:1000]}")
+                if hard_fail:
+                    sys.exit(1)
+                return ""
             resp.raise_for_status()
             data = resp.json()
             if data.get("stop_reason") == "max_tokens":
@@ -406,7 +433,9 @@ def call_claude(cfg: dict, prompt: str, tools: list[dict] | None = None,
             print(f"  [api] attempt {attempt} failed ({exc}); retrying in {wait}s")
             time.sleep(wait)
     print(f"API call failed after retries: {last_err}")
-    sys.exit(1)
+    if hard_fail:
+        sys.exit(1)
+    return ""
 
 
 def _split_top_level_objects(text: str) -> list[str]:
@@ -783,7 +812,7 @@ def run_two_phase(cfg: dict, candidates: list[dict], seen: dict, max_new: int) -
         full_text = fetch_full_article(cand["link"])
         tag = "full source" if full_text else "snippet only"
         write_prompt = build_writing_prompt(cfg, cand, full_text, use_search=context_search)
-        written = parse_json_object(call_claude(cfg, write_prompt, tools=search_tools))
+        written = parse_json_object(call_claude(cfg, write_prompt, tools=search_tools, hard_fail=False))
         if not written:
             print(f"    [skip] writing failed for: {cand['title'][:55]}")
             continue
@@ -851,7 +880,8 @@ def rewrite_articles(cfg: dict, limit: int | None = None, force: bool = False) -
         context_search = cfg.get("context_search", False)
         search_tools = [{"type": "web_search_20250305", "name": "web_search"}] if context_search else None
         written = parse_json_object(call_claude(
-            cfg, build_writing_prompt(cfg, pseudo, full_text, use_search=context_search), tools=search_tools))
+            cfg, build_writing_prompt(cfg, pseudo, full_text, use_search=context_search),
+            tools=search_tools, hard_fail=False))
         if not written or not (written.get("body") or "").strip():
             failed += 1
             print(f"  [keep] rewrite failed, left untouched: {art.get('headline','')[:50]}")
