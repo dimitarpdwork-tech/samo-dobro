@@ -340,6 +340,8 @@ Write an original article in {cfg['language_name']}. Rules:
 
 Also extract 3-5 short "quick facts" — standalone phrases (not full sentences, under ~12 words each) pulling out the concrete who/what/where/when/how-much details from the source. These appear in a bullet box at the top of the article, so each one must be fully understandable on its own without reading the article body.
 
+If the story is specifically tied to a particular Bulgarian city or town (not just "Bulgaria" broadly), include that city's name as one of the tags, in Bulgarian (e.g. "варна", "пловдив", "стара загора") — this is what lets readers browse news by their own city, so get it right whenever the source clearly names a specific place.
+
 Respond using EXACTLY this plain-text format — nothing before or after it. Do NOT use JSON. This format exists specifically so that quotes, apostrophes, and other punctuation in your writing can never break parsing the way an unescaped quote inside a JSON string would:
 
 ===HEADLINE===
@@ -359,7 +361,7 @@ Respond using EXACTLY this plain-text format — nothing before or after it. Do 
 <second fact>
 <third fact>
 ===TAGS===
-<tag one, tag two, tag three>
+<tag one, tag two, tag three — include the city tag here if applicable, per above>
 ===IMAGE_QUERY===
 <2-4 words English, generic scene for stock photo, never a real person's name>
 ===END==="""
@@ -867,9 +869,12 @@ def run_two_phase(cfg: dict, candidates: list[dict], seen: dict, max_new: int) -
         full_text = fetch_full_article(cand["link"])
         tag = "full source" if full_text else "snippet only"
         write_prompt = build_writing_prompt(cfg, cand, full_text, use_search=context_search)
-        written = parse_delimited_article(call_claude(cfg, write_prompt, tools=search_tools, hard_fail=False))
+        raw_response = call_claude(cfg, write_prompt, tools=search_tools, hard_fail=False)
+        written = parse_delimited_article(raw_response)
         if not written:
             print(f"    [skip] writing failed for: {cand['title'][:55]}")
+            print(f"    [debug] raw response start: {raw_response[:300]!r}")
+            print(f"    [debug] raw response end: {raw_response[-300:]!r}")
             continue
         url = save_one_written(cfg, written, cand, seen)
         if url:
@@ -946,12 +951,15 @@ def rewrite_articles(cfg: dict, limit: int | None = None, force: bool = False) -
                   "summary": art.get("summary_short", ""), "link": src_url}
         context_search = cfg.get("context_search", False)
         search_tools = [{"type": "web_search_20250305", "name": "web_search"}] if context_search else None
-        written = parse_delimited_article(call_claude(
+        raw_response = call_claude(
             cfg, build_writing_prompt(cfg, pseudo, full_text, use_search=context_search),
-            tools=search_tools, hard_fail=False))
+            tools=search_tools, hard_fail=False)
+        written = parse_delimited_article(raw_response)
         if not written or not (written.get("body") or "").strip():
             parse_failed += 1
             print(f"  [keep] rewrite failed, left untouched: {art.get('headline','')[:50]}")
+            print(f"  [debug] raw response start: {raw_response[:300]!r}")
+            print(f"  [debug] raw response end: {raw_response[-300:]!r}")
             continue
 
         # Merge the improved fields, preserving everything SEO-critical.
