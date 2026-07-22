@@ -17,7 +17,7 @@ SEO-optimized static site into dist/:
 GA4 / AdSense / Search Console verification are all off by default: fill in
 the matching field in config.json (ga4_measurement_id, adsense_client_id,
 google_site_verification, bing_site_verification) and the site activates the
-Consent-Mode-v2 cookie banner and the relevant script automatically — no
+Consent-Mode-v2 cookie banner and the relevant script automatically - no
 other code changes needed.
 
 Run:  python build.py
@@ -39,7 +39,7 @@ ASSETS_SRC = ROOT / "assets"
 DIST = ROOT / "dist"
 PAGE_SIZE = 12
 MIN_TAG_ARTICLES = 5  # a /tag/{slug}/ archive page is only built once a tag
-                      # has at least this many articles — below that, the
+                      # has at least this many articles - below that, the
                       # hashtag stays plain text rather than linking to a
                       # thin, near-empty page.
 
@@ -64,7 +64,7 @@ def load_config() -> dict:
         raise SystemExit(1)
     if not text.strip():
         print("ERROR: config.json is empty (0 bytes). The full file content didn't "
-              "save — re-open it, select all, and paste the complete config back in.")
+              "save - re-open it, select all, and paste the complete config back in.")
         raise SystemExit(1)
     try:
         return json.loads(text)
@@ -86,7 +86,7 @@ def load_articles(cfg) -> list[dict]:
                 if a.get("publish_at"):
                     embargo = datetime.strptime(a["publish_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
                     if now < embargo:
-                        continue  # not time yet — invisible to this build, will appear on its own later
+                        continue  # not time yet - invisible to this build, will appear on its own later
                 if a.get("category") not in cfg["categories"]:
                     a["category"] = next(iter(cfg["categories"]))
                 a["_dt"] = datetime.strptime(a["published"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
@@ -141,7 +141,7 @@ def tag_slug(tag: str, aliases: dict | None = None) -> str:
     """Transliterate a (typically Cyrillic) hashtag into a clean URL slug.
     Latin input passes through unchanged aside from lowercasing/hyphenation.
     `aliases` (from config.json's tag_aliases) maps a raw computed slug to a
-    canonical one — needed because the content pipeline sometimes tags in
+    canonical one - needed because the content pipeline sometimes tags in
     Cyrillic and sometimes in already-Latin/casual transliteration (e.g.
     'София' -> 'sofiya' via BG_TRANSLIT, but a literal 'sofia' tag passes
     through unchanged), which otherwise silently fragments one topic across
@@ -436,7 +436,7 @@ def pexels_resize(url: str, width: int) -> str:
     full-width banner vs. schema/OG image) instead of one fixed width
     everywhere, and to build srcset candidates.
     Both any existing w= AND h= params are stripped before adding the new
-    w= — leaving a fixed h= from the pipeline in place while only changing
+    w= - leaving a fixed h= from the pipeline in place while only changing
     w= would make Pexels crop to a distorted aspect ratio at smaller widths.
     Client-side object-fit:cover already handles final cropping to fit each
     container, so no server-side height constraint is needed here."""
@@ -452,10 +452,10 @@ def media(cfg, article, ui, height=180, eager=False,
           sizes="(max-width: 700px) 100vw, 292px") -> str:
     """Real stock photo when the pipeline found one, generated SVG art otherwise.
     Photo credit is a hard requirement of the free API's terms, not optional.
-    eager=True skips lazy-loading — use this only for the one above-the-fold
+    eager=True skips lazy-loading - use this only for the one above-the-fold
     image per page (the article's own banner), never for listing thumbnails.
     `sizes` should describe the actual rendered width in this context so the
-    browser can pick the right srcset candidate — pass a wider value for the
+    browser can pick the right srcset candidate - pass a wider value for the
     full-width article banner than for grid thumbnails."""
     if article.get("photo_url"):
         base_url = article["photo_url"]
@@ -507,7 +507,7 @@ def org_ld(site) -> dict:
 
 def author_ld(site) -> dict:
     """Article authorship is always attributed to the automated editorial
-    system as an Organization, never to a fabricated human Person — see
+    system as an Organization, never to a fabricated human Person - see
     /<about_path>/#editorial-process for the disclosed process. Set
     'byline_name' in config.json to customize the displayed name (defaults
     to '<site_name> AI Editorial System')."""
@@ -751,7 +751,7 @@ def pager(site, base_path: str, page: int, pages: int) -> str:
     if page < pages:
         parts.append(f'<a href="{link(page + 1)}" class="pager-nav">{ui["older"]} →</a>')
 
-    # Jump-to-page input — the numbered window above covers nearby pages and
+    # Jump-to-page input - the numbered window above covers nearby pages and
     # the endpoints in one click, but a direct jump from page 1 to page 14 of
     # 20 needs this rather than several intermediate clicks.
     base_js = site.u(base_path).rstrip("/")
@@ -795,16 +795,16 @@ def build_lists(site) -> None:
                     break  # site.articles is newest-first; first active pin wins
             except Exception:
                 pass
-    groups = [("home", "/", site.articles, [], cfg["description"], cfg["site_name"] + " — " + cfg["tagline"], "")]
+    groups = [("home", "/", site.articles, [], cfg["description"], cfg["site_name"] + " - " + cfg["tagline"], "")]
     for cid, cat in cfg["categories"].items():
         cat_arts = [a for a in site.articles if a["category"] == cid]
         # Pillar/guide articles are pulled out of the normal reverse-chronological
-        # flow entirely — they're pinned once at the top of page 1 instead of
+        # flow entirely - they're pinned once at the top of page 1 instead of
         # paginating away like a dated news item as new content publishes.
         pillars = [a for a in cat_arts if a.get("pillar")]
         regular = [a for a in cat_arts if not a.get("pillar")]
         intro = cat.get("intro", "")
-        desc = intro if intro else f'{cat["label"]} · {cfg["site_name"]} — {cfg["tagline"]}'
+        desc = intro if intro else f'{cat["label"]} · {cfg["site_name"]} - {cfg["tagline"]}'
         groups.append((cid, site.cat_path(cid), regular, pillars, desc,
                        f'{cat["label"]} · {cfg["site_name"]}', intro))
     for key, base_path, arts, pillars, desc, title, intro in groups:
@@ -865,7 +865,7 @@ def build_lists(site) -> None:
 
 def render_inline_links(text: str) -> str:
     """Support a minimal [label](url) markdown link syntax within paragraph
-    text, for citing official/clinical sources inline — e.g. linking to a
+    text, for citing official/clinical sources inline - e.g. linking to a
     health ministry's immunization portal from a health article. Everything
     outside the recognized syntax is still fully HTML-escaped; text with no
     such syntax renders identically to plain esc(text)."""
@@ -885,7 +885,7 @@ def render_article_body(body: str) -> str:
     heading support: a block (separated by a blank line, same as any other
     paragraph) that starts with '## ' or '### ' renders as <h2>/<h3> instead
     of <p>. Plain paragraph blocks with no such marker render exactly as
-    before — fully backward-compatible with existing short-form articles
+    before - fully backward-compatible with existing short-form articles
     that don't use headings at all. Paragraph text also supports an inline
     [label](url) link, e.g. for citing an official/clinical source."""
     parts = []
@@ -1054,23 +1054,23 @@ def build_articles(site, linked_tags: set) -> None:
 ABOUT = {
     "bg": [
         ("Защо съществуваме",
-         "Отвориш ли новините, светът изглежда черен: катастрофи, скандали, войни, поскъпване. Но това е само половината истина. Всеки ден в България лекари спасяват животи, доброволци садят гори, деца печелят олимпиади, съседи си помагат. {site} събира точно тези истории — само тях."),
+         "Отвориш ли новините, светът изглежда черен: катастрофи, скандали, войни, поскъпване. Но това е само половината истина. Всеки ден в България лекари спасяват животи, доброволци садят гори, деца печелят олимпиади, съседи си помагат. {site} събира точно тези позитивни новини от България - само тях."),
         ("Как избираме новините",
          "Наш AI редактор чете водещите български медии няколко пъти дневно и подбира единствено истински добрите новини: конкретни хубави събития, без трагедии „с позитивен привкус“, без политически битки, без криминални хроники. После написва кратко, човешко резюме на български."),
         ("Прозрачност",
-         "Всяко резюме е написано от изкуствен интелект по информация от посочения източник и никога не добавя измислени факти. Под всяка новина стои връзка към оригиналната публикация — препоръчваме да я отворите за пълната история. Ако забележите грешка, пишете ни и ще я поправим."),
+         "Всяко резюме е написано от изкуствен интелект по информация от посочения източник и никога не добавя измислени факти. Под всяка новина стои връзка към оригиналната публикация - препоръчваме да я отворите за пълната история. Ако забележите грешка, пишете ни и ще я поправим."),
         ("Свържи се с нас",
-         "Знаеш за добра новина, която сме пропуснали? Пиши ни на {email} — най-хубавите истории често идват от читатели."),
+         "Знаеш за добра новина, която сме пропуснали? Пиши ни на {email} - най-хубавите истории често идват от читатели."),
     ],
     "en": [
         ("Why we exist",
-         "Open any news site and the world looks dark: crashes, scandals, wars, prices. But that is only half the truth. Every single day, somewhere on this planet, a species comes back from the brink, a disease loses ground, a stranger helps a stranger. {site} collects exactly those stories — and only those."),
+         "Open any news site and the world looks dark: crashes, scandals, wars, prices. But that is only half the truth. Every single day, somewhere on this planet, a species comes back from the brink, a disease loses ground, a stranger helps a stranger. {site} collects exactly those stories - and only those."),
         ("How stories are chosen",
          "Our AI editor reads trusted international sources several times a day and selects only genuinely good news: concrete positive outcomes, no tragedies dressed up with a silver lining, no partisan politics, no crime. It then writes a short, human summary in plain English."),
         ("Transparency",
-         "Every summary is written by an AI from the linked source's reporting and never adds invented facts. Each story credits and links the original publication — we encourage you to read it in full. Spot an error? Tell us and we will fix it."),
+         "Every summary is written by an AI from the linked source's reporting and never adds invented facts. Each story credits and links the original publication - we encourage you to read it in full. Spot an error? Tell us and we will fix it."),
         ("Get in touch",
-         "Know a good story we missed? Write to {email} — the best finds often come from readers."),
+         "Know a good story we missed? Write to {email} - the best finds often come from readers."),
     ],
 }
 
@@ -1108,7 +1108,7 @@ PRIVACY = {
         ("Трети страни",
          "Google Анализ и Google реклами обработват данни съгласно собствените си политики за поверителност, достъпни на policies.google.com/privacy. Не споделяме данни с други трети страни."),
         ("Промени",
-         "Тази политика може да се актуализира при нужда — например когато добавим нов инструмент. Датата на последната промяна винаги ще е видима тук."),
+         "Тази политика може да се актуализира при нужда - например когато добавим нов инструмент. Датата на последната промяна винаги ще е видима тук."),
     ],
     "en": [
         ("What this policy covers",
@@ -1122,7 +1122,7 @@ PRIVACY = {
         ("Third parties",
          "Google Analytics and Google ads process data under their own privacy policies, available at policies.google.com/privacy. We do not share data with any other third party."),
         ("Changes",
-         "This policy may be updated as needed — for example, when we add a new tool. The date of the last change will always be visible here."),
+         "This policy may be updated as needed - for example, when we add a new tool. The date of the last change will always be visible here."),
     ],
 }
 
@@ -1176,7 +1176,7 @@ def build_feed(site) -> None:
 
 
 def build_news_sitemap(site) -> None:
-    """Publish news-sitemap.xml per Google's News Sitemap protocol — only
+    """Publish news-sitemap.xml per Google's News Sitemap protocol - only
     articles published within the last 48 hours. Google explicitly requires
     removing older entries; keeping stale URLs in reduces the sitemap's
     trustworthiness rather than just being harmlessly ignored. Worth having
@@ -1234,7 +1234,7 @@ def build_sitemap(site, tag_slugs: set) -> None:
     urls = [(site.abs_("/"), now), (site.abs_(f'/{cfg["about_path"]}/'), now),
             (site.abs_(f'/{cfg["privacy_path"]}/'), now)]
     # Note: page 2+ (home, category, and tag) are intentionally excluded here
-    # — they carry noindex and stay reachable only via in-page pagination
+    # - they carry noindex and stay reachable only via in-page pagination
     # links, so the sitemap doesn't send Google a mixed noindex-but-submitted
     # signal.
     for cid in cfg["categories"]:
@@ -1261,7 +1261,7 @@ def build_sitemap(site, tag_slugs: set) -> None:
 # --------------------------------------------------------------- main -----
 
 def build_search_index(site) -> None:
-    """Lightweight client-side search index — headline, summary, category,
+    """Lightweight client-side search index - headline, summary, category,
     and tags for every real article. Deliberately excludes full body text to
     keep the file small; enough for readers to find a specific article by
     title/topic/tag. Short keys (t/s/u/c/g/d) keep the JSON compact across
@@ -1280,7 +1280,7 @@ def build_search_index(site) -> None:
 
 def build_search_page(site) -> None:
     """A static page that fetches search-index.json and filters it entirely
-    client-side — no backend needed. Supports a shareable ?q= URL and live
+    client-side - no backend needed. Supports a shareable ?q= URL and live
     filtering as the user types. Noindexed, since internal search-result
     pages shouldn't be indexed individually (thin/duplicate-content risk)."""
     cfg, ui = site.cfg, site.cfg["ui"]
