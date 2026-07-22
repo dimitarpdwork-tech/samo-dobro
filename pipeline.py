@@ -29,6 +29,7 @@ import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urljoin
 
 import requests
 
@@ -131,13 +132,68 @@ def fetch_feed(feed: dict, window_hours: int) -> list[dict]:
     return out
 
 
+def fetch_scraped_listing(source: dict) -> list[dict]:
+    """Fetch a non-RSS listing page and extract candidate articles by
+    matching link hrefs against a configured URL substring (source['link_pattern'])
+    — deliberately NOT CSS-selector-based, since URL structure tends to survive
+    a site redesign far better than markup/class names do. No date filtering
+    here (unlike fetch_feed): listing pages rarely expose a clean parseable
+    date, so this relies entirely on seen.json dedup by URL — since only page 1
+    (or 'pages', a small explicit list) is checked each run, only genuinely new
+    items make it past the dedup filter in practice."""
+    pages = source.get("pages") or [source["url"]]
+    pattern = source["link_pattern"]
+    out = []
+    seen_hrefs = set()
+    for page_url in pages:
+        try:
+            resp = requests.get(page_url, timeout=15, headers={"User-Agent": USER_AGENT})
+            resp.raise_for_status()
+        except Exception as exc:
+            print(f"  [scrape] {source['name']}: failed to fetch listing page ({exc})")
+            continue
+        page_html = resp.text
+        for m in re.finditer(r'<a\s[^>]*href="([^"]+)"[^>]*>(.*?)</a>', page_html, re.DOTALL | re.IGNORECASE):
+            href, inner = m.group(1), m.group(2)
+            if pattern not in href:
+                continue
+            if href.startswith("/"):
+                href = urljoin(page_url, href)
+            if href in seen_hrefs:
+                continue
+            title = clean_text(re.sub(r"<[^>]+>", " ", inner), 200)
+            if not title or len(title) < 10:
+                # Too short to be a real headline — likely an icon/image-only
+                # link (a common pattern: thumbnail linked before the headline
+                # text). Deliberately NOT marking href as seen here — a later
+                # occurrence of the same href in the HTML may carry the real
+                # headline text, and this must not block that one.
+                continue
+            seen_hrefs.add(href)
+            out.append({
+                "id": entry_id(href, title),
+                "title": title,
+                "summary": "",  # listing pages rarely expose a summary; full text is fetched later anyway
+                "link": href,
+                "source": source["name"],
+            })
+            if len(out) >= 12:
+                break
+        if len(out) >= 12:
+            break
+    return out
+
+
 def collect_candidates(cfg: dict, seen_ids: set, window_override: int | None = None,
                         ignore_seen: bool = False) -> list[dict]:
     candidates, errors = [], []
     window = window_override if window_override is not None else cfg.get("window_hours", 48)
     for feed in cfg["feeds"]:
         try:
-            entries = fetch_feed(feed, window)
+            if feed.get("type") == "scrape":
+                entries = fetch_scraped_listing(feed)
+            else:
+                entries = fetch_feed(feed, window)
             fresh = entries if ignore_seen else [e for e in entries if e["id"] not in seen_ids]
             candidates.extend(fresh)
             print(f"  [feed] {feed['name']}: {len(fresh)} new / {len(entries)} recent")
@@ -673,7 +729,17 @@ def check_feeds(cfg: dict) -> None:
     ok = 0
     for feed in cfg["feeds"]:
         try:
-            entries = fetch_feed(feed, window_hours=24 * 14)
+            if feed.get("type") == "scrape":
+                # fetch_scraped_listing() swallows per-page fetch errors by
+                # design (so one bad page never crashes a real collection
+                # run) — do a direct reachability check here instead, so this
+                # diagnostic can tell "reachable, 0 matches" (check
+                # link_pattern) apart from "couldn't even reach the page".
+                resp = requests.get(feed["url"], timeout=15, headers={"User-Agent": USER_AGENT})
+                resp.raise_for_status()
+                entries = fetch_scraped_listing(feed)
+            else:
+                entries = fetch_feed(feed, window_hours=24 * 14)
             print(f"  OK    {feed['name']}: {len(entries)} recent entries — {feed['url']}")
             ok += 1
         except Exception as exc:
