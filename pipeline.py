@@ -923,12 +923,16 @@ CRITICAL — USE WEB SEARCH TO VERIFY FACTS BEFORE WRITING:
 - Where a section rests on one clearly verifiable official/authoritative source, cite it inline (format below)
   the way a careful human editor would — but only a URL you actually found via search and are confident is real.
   Never invent a URL.
+- IMPORTANT: the ONLY citation format allowed in the body text is [link text](URL) — do NOT use <cite> tags,
+  footnote markers, or any other citation markup. This body text is published directly on a website with no
+  citation-rendering system beyond that one link format; anything else will show up as broken, garbled text to
+  real readers.
 
 STRUCTURE
 - Open with a 2-4 sentence introduction (no heading) framing why this topic matters.
 - Follow with 4-6 clearly separated sections, each starting with its own '## Heading' line (in
   {cfg['language_name']}), covering genuinely distinct sub-topics — not padding.
-- To cite a source inline, use exactly this syntax: [link text](URL)
+- To cite a source inline, use exactly this syntax: [link text](URL) — nothing else, see above.
 - Close with a short, honest paragraph (no heading) stating this is an AI-compiled guide based on publicly
   available information rather than one single source, and inviting corrections via the site's contact email.
 - Total length: 500-800 words.
@@ -954,6 +958,13 @@ def save_guide(cfg: dict, written: dict, category_id: str) -> str | None:
     at the top of their category page instead of letting them paginate away
     like a dated news item."""
     body = (written.get("body") or "").strip()
+    # Defensive cleanup: models with web_search access have a strong trained
+    # habit of citing sources with <cite index="...">...</cite> tags (the
+    # same syntax used elsewhere for citing search results), which can slip
+    # through despite the prompt explicitly forbidding it. build.py's
+    # renderer doesn't recognize these — they'd show up as raw, broken markup
+    # to real readers. Strip the tags, keep the actual cited text.
+    body = re.sub(r'<cite[^>]*>(.*?)</cite>', r'\1', body, flags=re.DOTALL)
     headline = clip(written.get("headline", ""), 90)
     if not body or not headline:
         return None
