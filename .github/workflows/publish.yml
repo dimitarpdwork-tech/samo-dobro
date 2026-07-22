@@ -29,6 +29,10 @@ on:
         description: "Only used with rewrite_articles: also reprocess articles already marked rewritten (use when the writing prompt itself changed, e.g. added-value paragraphs, and older rewrites should be brought up to the current standard)"
         type: boolean
         default: false
+      rewrite_limit:
+        description: "Only used with rewrite_articles: cap how many articles this run processes. Leave blank to process all eligible articles — recommended to test with a small number (e.g. 15) first."
+        type: string
+        default: ""
       generate_guide:
         description: "One-off: generate one original, web-search-grounded evergreen guide (наръчник) instead of publishing daily news. Targets the thinnest category unless you set guide_category below."
         type: boolean
@@ -78,11 +82,14 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
+          ARGS="--rewrite-articles"
           if [ "${{ github.event.inputs.rewrite_force }}" = "true" ]; then
-            python pipeline.py --rewrite-articles --rewrite-force
-          else
-            python pipeline.py --rewrite-articles
+            ARGS="$ARGS --rewrite-force"
           fi
+          if [ -n "${{ github.event.inputs.rewrite_limit }}" ]; then
+            ARGS="$ARGS --rewrite-limit ${{ github.event.inputs.rewrite_limit }}"
+          fi
+          python pipeline.py $ARGS
 
       - name: List candidates (diagnostic, no publishing)
         if: github.event.inputs.list_candidates == 'true'
