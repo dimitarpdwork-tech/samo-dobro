@@ -91,6 +91,21 @@ jobs:
           fi
           python pipeline.py $ARGS
 
+      - name: Commit progress (after rewrite)
+        # Commits immediately so a later cancelled/failed step (e.g. the
+        # build) can never discard work this step already completed and
+        # paid for. Does nothing if there's nothing new to commit.
+        if: github.event.inputs.rewrite_articles == 'true'
+        run: |
+          git config user.name "good-news-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add content
+          if ! git diff --cached --quiet; then
+            git commit -m "Rewrite pass $(date -u +'%Y-%m-%d %H:%M')"
+            git pull --rebase origin main
+            git push
+          fi
+
       - name: List candidates (diagnostic, no publishing)
         if: github.event.inputs.list_candidates == 'true'
         run: python pipeline.py --list-candidates
@@ -101,6 +116,18 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python pipeline.py --recover
 
+      - name: Commit progress (after recover)
+        if: github.event.inputs.recover == 'true'
+        run: |
+          git config user.name "good-news-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add content
+          if ! git diff --cached --quiet; then
+            git commit -m "Recovered stories $(date -u +'%Y-%m-%d %H:%M')"
+            git pull --rebase origin main
+            git push
+          fi
+
       - name: Generate an evergreen guide article (one-off)
         if: github.event.inputs.generate_guide == 'true'
         env:
@@ -110,6 +137,18 @@ jobs:
             python pipeline.py --generate-guide --guide-category "${{ github.event.inputs.guide_category }}" --guide-count "${{ github.event.inputs.guide_count }}"
           else
             python pipeline.py --generate-guide --guide-count "${{ github.event.inputs.guide_count }}"
+          fi
+
+      - name: Commit progress (after guide generation)
+        if: github.event.inputs.generate_guide == 'true'
+        run: |
+          git config user.name "good-news-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add content
+          if ! git diff --cached --quiet; then
+            git commit -m "New guide article $(date -u +'%Y-%m-%d %H:%M')"
+            git pull --rebase origin main
+            git push
           fi
 
       - name: Fetch and write new stories (AI pipeline)
@@ -125,6 +164,9 @@ jobs:
         run: python pipeline.py --backfill-photos
 
       - name: Commit new stories
+        # Safety-net final commit — catches the daily-pipeline and backfill-photos
+        # paths (which don't have their own dedicated commit step above), and is a
+        # harmless no-op for any path that already committed its own work.
         if: github.event_name != 'push'
         run: |
           git config user.name "good-news-bot"
