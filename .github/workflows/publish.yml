@@ -33,6 +33,10 @@ on:
         description: "Optional, only used with generate_guide: category id to target (e.g. zdrave, priroda, sport). Leave blank to auto-pick the thinnest category."
         type: string
         default: ""
+      guide_count:
+        description: "Optional, only used with generate_guide: how many guides to generate in this run. Default 1 — each one costs real API time/money, and quality matters more than volume here."
+        type: string
+        default: "1"
   push:
     branches: [main]              # deploys design/content edits without the AI step
 
@@ -87,9 +91,9 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           if [ -n "${{ github.event.inputs.guide_category }}" ]; then
-            python pipeline.py --generate-guide --guide-category "${{ github.event.inputs.guide_category }}"
+            python pipeline.py --generate-guide --guide-category "${{ github.event.inputs.guide_category }}" --guide-count "${{ github.event.inputs.guide_count }}"
           else
-            python pipeline.py --generate-guide
+            python pipeline.py --generate-guide --guide-count "${{ github.event.inputs.guide_count }}"
           fi
 
       - name: Fetch and write new stories (AI pipeline)
