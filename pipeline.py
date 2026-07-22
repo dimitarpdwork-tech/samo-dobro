@@ -169,7 +169,7 @@ def load_recent_headlines(days: int = 10, limit: int = 60) -> list[str]:
     return [h for _, h in items[:limit]]
 
 
-def fetch_full_article(url: str, timeout: int = 20) -> str | None:
+def fetch_full_article(url: str, timeout: int = 8) -> str | None:
     """Fetch a story's source page and extract just the article text.
 
     Deliberately defensive: ANY failure — the extraction library not being
@@ -181,10 +181,19 @@ def fetch_full_article(url: str, timeout: int = 20) -> str | None:
         return None
     try:
         import trafilatura  # imported lazily so the pipeline still runs without it
+        from trafilatura.settings import use_config
     except Exception:
         return None
     try:
-        downloaded = trafilatura.fetch_url(url)
+        # IMPORTANT: trafilatura.fetch_url() does not accept a timeout kwarg —
+        # a previous version of this function had a `timeout` parameter that
+        # was never actually passed to anything, silently falling back to
+        # trafilatura's own default (30s). A batch hitting several dead links
+        # from older articles could burn several real minutes waiting for
+        # nothing as a result. The actual mechanism is a Config object.
+        config = use_config()
+        config.set("DEFAULT", "DOWNLOAD_TIMEOUT", str(timeout))
+        downloaded = trafilatura.fetch_url(url, config=config)
         if not downloaded:
             return None
         text = trafilatura.extract(
@@ -844,9 +853,15 @@ def rewrite_articles(cfg: dict, limit: int | None = None, force: bool = False) -
         print("No content directory. Nothing to rewrite.")
         return
     paths = sorted(CONTENT_DIR.rglob("*.json"))
-    done, skipped, failed = 0, 0, 0
+    done, skipped, fetch_failed, parse_failed, attempted = 0, 0, 0, 0, 0
     for path in paths:
-        if limit is not None and done >= limit:
+        # IMPORTANT: this checks ATTEMPTS (paid API calls made), not successful
+        # rewrites. A previous version checked `done >= limit` here, which only
+        # counted successes — meaning a run with a poor parse-success rate could
+        # silently make far more paid calls than the limit was meant to cap,
+        # while technically never exceeding it. `--rewrite-limit` must bound
+        # real spend, not just output count.
+        if limit is not None and attempted >= limit:
             break
         try:
             with open(path, encoding="utf-8-sig") as f:
@@ -870,9 +885,15 @@ def rewrite_articles(cfg: dict, limit: int | None = None, force: bool = False) -
         full_text = fetch_full_article(src_url)
         if not full_text:
             # Can't re-fetch the source — leave the existing article exactly as is.
-            failed += 1
+            # No API call was made, so this does NOT count against the limit.
+            fetch_failed += 1
             print(f"  [keep] source unavailable, left untouched: {art.get('headline','')[:50]}")
             continue
+
+        # From here on, a real paid API call is about to be made — count it now,
+        # before we even know whether it succeeds, since the limit exists to
+        # bound spend, not output.
+        attempted += 1
 
         # Reuse the same writing prompt as the live pipeline for consistency.
         pseudo = {"title": art.get("headline", ""), "source": art.get("source_name", ""),
@@ -883,7 +904,7 @@ def rewrite_articles(cfg: dict, limit: int | None = None, force: bool = False) -
             cfg, build_writing_prompt(cfg, pseudo, full_text, use_search=context_search),
             tools=search_tools, hard_fail=False))
         if not written or not (written.get("body") or "").strip():
-            failed += 1
+            parse_failed += 1
             print(f"  [keep] rewrite failed, left untouched: {art.get('headline','')[:50]}")
             continue
 
@@ -906,8 +927,10 @@ def rewrite_articles(cfg: dict, limit: int | None = None, force: bool = False) -
         done += 1
         print(f"  [rewritten] {art['headline'][:55]}")
 
-    print(f"\nRewrite complete. {done} rewritten, {skipped} skipped (seed/special/no-source), "
-          f"{failed} left untouched (source unavailable or rewrite failed).")
+    print(f"\nRewrite complete. {attempted} paid API call(s) made, {done} rewritten successfully, "
+          f"{parse_failed} of those calls failed to parse (paid, but left untouched), "
+          f"{fetch_failed} skipped for a dead/unfetchable source (free, no API call), "
+          f"{skipped} skipped entirely — seed/special/no-source/already-rewritten (zero cost).")
 
 
 def count_articles_by_category(cfg: dict) -> dict:
