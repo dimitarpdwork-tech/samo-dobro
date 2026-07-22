@@ -1023,6 +1023,30 @@ def generate_guide(cfg: dict, category_override: str | None = None) -> None:
         print("  Guide response was missing a headline or body. Nothing saved.")
 
 
+def generate_guides(cfg: dict, count: int, category_override: str | None = None) -> None:
+    """Generate `count` guides in one run. Each call re-reads existing guides
+    from disk, so category selection (pick_thinnest_category) and duplicate-
+    topic avoidance both naturally account for guides created earlier in the
+    same run — no special batching logic needed beyond looping.
+
+    A soft, printed warning at higher counts rather than a hard limit: this
+    is a genuine quality/cost tradeoff for a human to weigh, not a safety
+    issue to enforce. See the guidance in generate_guide()'s own docstring
+    and the README/chat history for sizing recommendations."""
+    if count > 10:
+        print(f"  [note] generating {count} guides in one run. Each one is a real API cost (web search + "
+              f"long-form writing) and takes 1-2 minutes. More importantly: a category only has so many "
+              f"genuinely distinct 'start here' topics before new guides start feeling thin or redundant — "
+              f"quality, not quantity, is what earns citations. Consider a smaller batch and reviewing the "
+              f"output before generating more.")
+    for i in range(count):
+        if count > 1:
+            print(f"\n=== guide {i + 1} of {count} ===")
+        generate_guide(cfg, category_override=category_override)
+        if i < count - 1:
+            time.sleep(5)  # brief pause between calls
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Good-news pipeline")
     ap.add_argument("--check-feeds", action="store_true")
@@ -1043,6 +1067,8 @@ def main() -> None:
                           "(a 'наръчник'), targeting the thinnest category by default")
     ap.add_argument("--guide-category", type=str, default=None,
                      help="override which category --generate-guide targets (defaults to the thinnest)")
+    ap.add_argument("--guide-count", type=int, default=1,
+                     help="generate this many guides in one run instead of one (default 1)")
     ap.add_argument("--force", action="store_true", help="skip the duplicate-trigger cooldown check")
     args = ap.parse_args()
 
@@ -1057,7 +1083,7 @@ def main() -> None:
         rewrite_articles(cfg, limit=args.rewrite_limit)
         return
     if args.generate_guide:
-        generate_guide(cfg, category_override=args.guide_category)
+        generate_guides(cfg, count=max(1, args.guide_count), category_override=args.guide_category)
         return
     if args.list_candidates:
         print(f"[{cfg['site_name']}] listing every candidate in the last 72h "
