@@ -39,6 +39,8 @@
     "gornaoryahovitsa": "gorna-oryahovitsa",
     "novazagora": "nova-zagora"
   },
+  "cities_path": "gradove",
+  "digest_path": "dnes",
   "known_cities": {
     "sofiya": "София", "plovdiv": "Пловдив", "varna": "Варна", "burgas": "Бургас",
     "ruse": "Русе", "stara-zagora": "Стара Загора", "pleven": "Плевен", "sliven": "Сливен",
@@ -106,6 +108,9 @@
     "updated_label": "Обновено",
     "cities_title": "Новини по градове",
     "cities_empty": "Все още няма град с достатъчно новини — проверете отново скоро.",
+    "digest_title": "Добрите новини днес",
+    "digest_intro": "Обобщение на добрите новини, публикувани днес, {date}.",
+    "digest_empty": "Още няма публикувани новини за днес — проверете отново скоро.",
     "privacy": "Поверителност",
     "cookie_text": "Използваме бисквитки за анонимна статистика и, в бъдеще, за реклами. Можете спокойно да откажете.",
     "cookie_accept": "Приемам",
@@ -135,6 +140,7 @@
     { "name": "Дневник", "url": "https://www.dnevnik.bg/rss/" },
     { "name": "Actualno", "url": "https://www.actualno.com/rss/novini-new" },
     { "name": "24 часа", "url": "https://www.24chasa.bg/rss" },
-    { "name": "Добри новини", "url": "https://dobrinovini.com/feed/" }
+    { "name": "Добри новини", "url": "https://dobrinovini.com/feed/" },
+    { "name": "Народно събрание", "url": "https://www.parliament.bg/feed/news" }
   ]
 }
