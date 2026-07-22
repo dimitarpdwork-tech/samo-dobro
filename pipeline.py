@@ -235,12 +235,15 @@ CANDIDATES
 {cand_lines}"""
 
 
-def build_writing_prompt(cfg: dict, story: dict, full_text: str | None) -> str:
+def build_writing_prompt(cfg: dict, story: dict, full_text: str | None, use_search: bool = False) -> str:
     """Phase 2: write ONE article, ideally from the full source text. Uniqueness
     rules are explicit so articles don't read as templated. The lede and
     quick-facts rules exist so AI search/answer engines have a self-contained,
     citable passage near the top of the page instead of only a narrative
-    opening — see the GEO section of the SEO audit."""
+    opening — see the GEO section of the SEO audit. The added-value context
+    rule exists so articles aren't pure rewrites with nothing to distinguish
+    them from the wire source (the isBasedOn attribution-cannibalization
+    problem) — see the chat history for the reasoning."""
     source_block = (
         f"FULL SOURCE ARTICLE (write from this):\n{full_text}"
         if full_text else
@@ -260,6 +263,35 @@ def build_writing_prompt(cfg: dict, story: dict, full_text: str | None) -> str:
         "the snippet doesn't support it — a short honest opening beats a "
         "padded one."
     )
+    if use_search:
+        context_rule = (
+            "- After the lede and supporting paragraph(s), add 1-2 MORE paragraphs of genuine added value that "
+            "go beyond the source: use web search to verify real, specific context — the history or effort "
+            "behind the event (who has worked on this and for how long, e.g. a conservation program's actual "
+            "backstory), the broader significance (what this means for the environment/community/country "
+            "beyond this one event), or how this compares to the situation before. This is what makes the "
+            "piece worth reading even for someone who already saw the original story, and it's the reason the "
+            "piece deserves credit as its own source rather than just a rewrite. Only include facts you "
+            "actually verified via search and are confident are real — never invent a specific number, date, "
+            "name, or program detail. If search doesn't turn up anything solid, write a general, qualitative "
+            "context paragraph instead rather than guessing at specifics.\n"
+            "- If you cite a specific external source for this added context, use exactly this syntax: "
+            "[link text](URL) — the ONLY citation format allowed. Do NOT use <cite> tags, footnotes, or any "
+            "other citation markup; this text is published directly on a website with no citation-rendering "
+            "system beyond that one link format — anything else shows up as broken, garbled text to readers."
+        )
+    else:
+        context_rule = (
+            "- After the lede and supporting paragraph(s), add 1-2 MORE paragraphs of genuine added value that "
+            "go beyond the source: explain the broader significance (what this means for the "
+            "environment/community/country, why it matters beyond this one event) or general, well-established "
+            "background (e.g., the kind of effort typically behind this type of program or conservation work) "
+            "— using only general knowledge you are confident is accurate. Do NOT invent specific new numbers, "
+            "dates, names, or program details beyond what's in the source above — keep this part general and "
+            "explanatory rather than citing unverified specifics. This is what makes the piece worth reading "
+            "even for someone who already saw the original story."
+        )
+    word_target = "380-480 words total" if full_text else "180-230 words total (snippet is thin — keep the added-value part brief and general rather than padding)"
     return f"""You are the editor of "{cfg['site_name']}", writing one good-news article in {cfg['language_name']}.
 
 HEADLINE OF THE STORY: {story['title']}
@@ -268,13 +300,14 @@ SOURCE: {story['source']}
 {source_block}
 
 Write an original article in {cfg['language_name']}. Rules:
-- Use ONLY facts present in the source above. Never invent numbers, names, quotes, or dates.
+- Use ONLY facts present in the source above for the core summary. Never invent numbers, names, quotes, or dates.
 - Include 2-3 CONCRETE specific details from the source (a number, a place, a name, a circumstance) — this is what makes the piece real rather than generic.
 {lede_rule}
-- After the lede, add 1-2 shorter paragraphs of supporting context or narrative — don't just repeat the lede in different words.
+- After the lede, add 1-2 shorter paragraphs of supporting context or narrative from the source — don't just repeat the lede in different words.
+{context_rule}
 - Find the actual STORY beyond the headline — what does the full source reveal that the headline alone wouldn't tell someone?
 - Warm, human, concrete tone. Hopeful, never saccharine or clickbaity.
-- {"300-380 words total" if full_text else "150-200 words total (snippet is thin, don't pad with filler)"}.
+- {word_target}.
 - Native-level {cfg['language_name']}. Never invent words. Check noun-adjective gender/number agreement. Never use Russian spellings or words.
 
 Also extract 3-5 short "quick facts" — standalone phrases (not full sentences, under ~12 words each) pulling out the concrete who/what/where/when/how-much details from the source. These appear in a bullet box at the top of the article, so each one must be fully understandable on its own without reading the article body.
@@ -675,6 +708,10 @@ def save_one_written(cfg: dict, written: dict, cand: dict, seen: dict) -> str | 
     default_cat = next(iter(cfg["categories"]))
     now = datetime.now(timezone.utc)
     body = (written.get("body") or "").strip()
+    # Defensive cleanup: strip any stray <cite>...</cite> tags the model might
+    # emit when context_search is on (same trained-habit issue as the guide
+    # generator — see generate_guide/save_guide for the full explanation).
+    body = re.sub(r'<cite[^>]*>(.*?)</cite>', r'\1', body, flags=re.DOTALL)
     headline = clip(written.get("headline", ""), 90)
     if not body or not headline:
         return None
@@ -717,6 +754,8 @@ def run_two_phase(cfg: dict, candidates: list[dict], seen: dict, max_new: int) -
 
     saved, new_urls = 0, []
     seen_ids = set(seen["ids"])
+    context_search = cfg.get("context_search", False)
+    search_tools = [{"type": "web_search_20250305", "name": "web_search"}] if context_search else None
     for pick in picks:
         try:
             cand = candidates[int(pick["candidate"])]
@@ -726,8 +765,8 @@ def run_two_phase(cfg: dict, candidates: list[dict], seen: dict, max_new: int) -
             continue
         full_text = fetch_full_article(cand["link"])
         tag = "full source" if full_text else "snippet only"
-        write_prompt = build_writing_prompt(cfg, cand, full_text)
-        written = parse_json_object(call_claude(cfg, write_prompt))
+        write_prompt = build_writing_prompt(cfg, cand, full_text, use_search=context_search)
+        written = parse_json_object(call_claude(cfg, write_prompt, tools=search_tools))
         if not written:
             print(f"    [skip] writing failed for: {cand['title'][:55]}")
             continue
@@ -740,14 +779,17 @@ def run_two_phase(cfg: dict, candidates: list[dict], seen: dict, max_new: int) -
     return saved, new_urls
 
 
-def rewrite_articles(cfg: dict, limit: int | None = None) -> None:
+def rewrite_articles(cfg: dict, limit: int | None = None, force: bool = False) -> None:
     """Go back through existing articles and rewrite each to the current
     professional length/uniqueness standard, using its original source.
 
     Safety-first, because this EDITS live content:
     - Preserves slug, id, published date, category, and any existing photo —
       so URLs and SEO are untouched (only headline/body/meta/tags improve).
-    - Skips seed articles and anything already marked rewritten.
+    - Skips seed articles. Skips anything already marked rewritten UNLESS
+      force=True — needed to bring articles that were rewritten under an
+      older prompt version (e.g. before the added-value-paragraph rule
+      existed) up to the current standard, not just untouched ones.
     - Skips (leaves untouched) any article whose source can't be re-fetched or
       whose rewrite fails to parse — a bad rewrite must never replace good text.
     - Writes each file in place only after a valid new version is produced.
@@ -767,7 +809,7 @@ def rewrite_articles(cfg: dict, limit: int | None = None) -> None:
             continue  # broken file is build.py's problem, not ours
 
         # Skip things we shouldn't touch.
-        if art.get("id", "").startswith("seed") or art.get("rewritten"):
+        if art.get("id", "").startswith("seed") or (art.get("rewritten") and not force):
             skipped += 1
             continue
         # Never rewrite the special anniversary / pinned pieces.
@@ -789,7 +831,10 @@ def rewrite_articles(cfg: dict, limit: int | None = None) -> None:
         # Reuse the same writing prompt as the live pipeline for consistency.
         pseudo = {"title": art.get("headline", ""), "source": art.get("source_name", ""),
                   "summary": art.get("summary_short", ""), "link": src_url}
-        written = parse_json_object(call_claude(cfg, build_writing_prompt(cfg, pseudo, full_text)))
+        context_search = cfg.get("context_search", False)
+        search_tools = [{"type": "web_search_20250305", "name": "web_search"}] if context_search else None
+        written = parse_json_object(call_claude(
+            cfg, build_writing_prompt(cfg, pseudo, full_text, use_search=context_search), tools=search_tools))
         if not written or not (written.get("body") or "").strip():
             failed += 1
             print(f"  [keep] rewrite failed, left untouched: {art.get('headline','')[:50]}")
@@ -1062,6 +1107,10 @@ def main() -> None:
                      help="one-time: rewrite existing articles to professional length from their full source")
     ap.add_argument("--rewrite-limit", type=int, default=None,
                      help="cap how many articles --rewrite-articles processes in one run")
+    ap.add_argument("--rewrite-force", action="store_true",
+                     help="also reprocess articles already marked rewritten — use when the writing prompt "
+                          "itself has changed (e.g. the added-value-paragraph rule) and older rewrites should "
+                          "be brought up to the current standard")
     ap.add_argument("--generate-guide", action="store_true",
                      help="generate one original, web-search-grounded evergreen guide article "
                           "(a 'наръчник'), targeting the thinnest category by default")
@@ -1080,7 +1129,7 @@ def main() -> None:
         backfill_photos(cfg)
         return
     if args.rewrite_articles:
-        rewrite_articles(cfg, limit=args.rewrite_limit)
+        rewrite_articles(cfg, limit=args.rewrite_limit, force=args.rewrite_force)
         return
     if args.generate_guide:
         generate_guides(cfg, count=max(1, args.guide_count), category_override=args.guide_category)
