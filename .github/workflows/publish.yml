@@ -25,6 +25,10 @@ on:
         description: "One-time: rewrite existing articles to professional length from their full source (preserves URLs & dates)"
         type: boolean
         default: false
+      rewrite_force:
+        description: "Only used with rewrite_articles: also reprocess articles already marked rewritten (use when the writing prompt itself changed, e.g. added-value paragraphs, and older rewrites should be brought up to the current standard)"
+        type: boolean
+        default: false
       generate_guide:
         description: "One-off: generate one original, web-search-grounded evergreen guide (наръчник) instead of publishing daily news. Targets the thinnest category unless you set guide_category below."
         type: boolean
@@ -73,7 +77,12 @@ jobs:
         if: github.event.inputs.rewrite_articles == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python pipeline.py --rewrite-articles
+        run: |
+          if [ "${{ github.event.inputs.rewrite_force }}" = "true" ]; then
+            python pipeline.py --rewrite-articles --rewrite-force
+          else
+            python pipeline.py --rewrite-articles
+          fi
 
       - name: List candidates (diagnostic, no publishing)
         if: github.event.inputs.list_candidates == 'true'
