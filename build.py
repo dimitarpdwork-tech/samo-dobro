@@ -318,6 +318,12 @@ background:var(--card);color:var(--ink);font-family:var(--fl);text-align:center}
 .pager-jump button{padding:8px 16px;border-radius:999px;border:1.5px solid var(--line);
 background:var(--card);font-family:var(--fl);font-weight:700;cursor:pointer}
 .pager-jump button:hover{border-color:var(--p)}
+.city-grid{display:flex;flex-wrap:wrap;gap:10px;margin:20px 0}
+.city-chip{display:inline-flex;align-items:center;gap:8px;font-family:var(--fl);font-weight:700;
+font-size:.95rem;padding:10px 16px;border-radius:999px;border:1.5px solid var(--line);
+background:var(--card);transition:border-color .15s}
+.city-chip:hover{border-color:var(--p)}
+.city-count{font-size:.78rem;color:var(--muted);background:var(--bg);border-radius:999px;padding:2px 8px}
 footer{border-top:1px solid var(--line);margin-top:20px;padding:30px 0 40px;background:var(--card)}
 footer .mission{max-width:56ch;color:var(--muted);margin:8px 0 16px}
 footer .fnav{display:flex;gap:18px;flex-wrap:wrap;font-family:var(--fl);font-weight:700;font-size:.9rem}
@@ -671,12 +677,16 @@ def header(site, active: str | None = None, is_home: bool = False) -> str:
 def footer(site) -> str:
     cfg, ui = site.cfg, site.cfg["ui"]
     year = datetime.now().year
+    cities_link = ""
+    if cfg.get("known_cities"):
+        cities_path = cfg.get("cities_path", "gradove")
+        cities_link = f'<a href="{site.u("/" + cities_path + "/")}">{esc(ui.get("cities_title", "Browse by City"))}</a>\n'
     return f"""<footer><div class="wrap">
 <strong style="font-family:var(--fd);font-size:1.05rem">{esc(cfg['site_name'])}</strong>
 <p class="mission">{esc(ui['footer_mission'])}</p>
 <nav class="fnav">
 <a href="{site.u('/' + cfg['about_path'] + '/')}">{esc(ui['about'])}</a>
-<a href="{site.u('/' + cfg['privacy_path'] + '/')}">{esc(ui.get('privacy', 'Privacy'))}</a>
+{cities_link}<a href="{site.u('/' + cfg['privacy_path'] + '/')}">{esc(ui.get('privacy', 'Privacy'))}</a>
 <a href="{site.u('/feed.xml')}">{esc(ui.get('rss', 'RSS'))}</a>
 <a href="mailto:{esc(cfg['contact_email'])}">{esc(cfg['contact_email'])}</a>
 </nav>
@@ -998,6 +1008,44 @@ def build_tags(site) -> set:
                 description=f'{ui.get("tags", "Tags")}: #{display}',
                 path=path, body=body, jsonld=jsonld, noindex=(p > 1)))
     return set(qualifying.keys())
+
+
+def build_city_index(site) -> None:
+    """A curated 'Browse by City' page — filters the existing tag archive
+    system down to just known Bulgarian cities (config.json's
+    known_cities), so readers can find news specific to where they live
+    without wading through the full topic-tag cloud. Reuses the same
+    /tag/{slug}/ pages build_tags() already generates rather than
+    duplicating that infrastructure — a city appears here only once it
+    crosses the same MIN_TAG_ARTICLES threshold as any other tag."""
+    cfg, ui = site.cfg, site.cfg["ui"]
+    known_cities = cfg.get("known_cities", {})
+    if not known_cities:
+        return
+    idx = build_tag_index(site.articles, cfg.get("tag_aliases", {}))
+    cities = []
+    for slug, display_name in known_cities.items():
+        data = idx.get(slug)
+        if data and len(data["articles"]) >= MIN_TAG_ARTICLES:
+            cities.append((display_name, slug, len(data["articles"])))
+    cities.sort(key=lambda c: c[2], reverse=True)
+
+    cities_path = cfg.get("cities_path", "gradove")
+    title = ui.get("cities_title", "Browse by City")
+    if not cities:
+        body = (f'<div class="about"><h1>{esc(title)}</h1>'
+                 f'<p>{esc(ui.get("cities_empty", "No city has enough coverage yet — check back soon."))}</p></div>')
+    else:
+        items = "".join(
+            f'<a class="city-chip" href="{site.u(site.tag_path(slug))}">{esc(name)} '
+            f'<span class="city-count">{count}</span></a>'
+            for name, slug, count in cities
+        )
+        body = f'<div class="about"><h1>{esc(title)}</h1><div class="city-grid">{items}</div></div>'
+
+    path = f'/{cities_path}/'
+    write(DIST / cities_path / "index.html",
+          base_page(site, title=f'{title} · {cfg["site_name"]}', description=title, path=path, body=body))
 
 
 def build_articles(site, linked_tags: set) -> None:
@@ -1435,6 +1483,7 @@ def main() -> None:
     build_rsl(site)
     build_search_index(site)
     build_search_page(site)
+    build_city_index(site)
     build_llms_txt(site)
     print(f"[{cfg['site_name']}] built {len(articles)} articles → {DIST}")
 
