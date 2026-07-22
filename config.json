@@ -141,6 +141,10 @@
     { "name": "Actualno", "url": "https://www.actualno.com/rss/novini-new" },
     { "name": "24 часа", "url": "https://www.24chasa.bg/rss" },
     { "name": "Добри новини", "url": "https://dobrinovini.com/feed/" },
-    { "name": "Народно събрание", "url": "https://www.parliament.bg/feed/news" }
+    { "name": "Народно събрание", "url": "https://www.parliament.bg/feed/news" },
+    { "name": "Министерски съвет", "type": "scrape",
+      "url": "https://gov.bg/en/Press-center/News", "link_pattern": "/Press-center/News/" },
+    { "name": "БНР — Живот", "type": "scrape",
+      "url": "https://bnrnews.bg/en/list/life", "link_pattern": "/en/post/" }
   ]
 }
