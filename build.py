@@ -199,9 +199,16 @@ a{color:inherit;text-decoration:none}img,svg{max-width:100%}
 .mark{flex:0 0 auto;display:grid;place-items:center}
 .brand h1,.brand .h1{font-family:var(--fd);font-weight:800;font-size:1.9rem;margin:0;letter-spacing:-.02em;line-height:1}
 .brand p{margin:3px 0 0;color:var(--muted);font-size:.95rem}
-.today{margin-left:auto;font-family:var(--fl);text-transform:uppercase;letter-spacing:.14em;
+.today{font-family:var(--fl);text-transform:uppercase;letter-spacing:.14em;
 font-size:.72rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;
-padding:7px 14px;background:var(--card)}
+padding:7px 14px;background:var(--card);flex:0 0 auto}
+.search-form{display:flex;align-items:center;gap:6px;margin-left:auto;max-width:260px;flex:1 1 200px}
+.search-form input{flex:1;min-width:0;padding:8px 14px;border-radius:999px;border:1.5px solid var(--line);
+background:var(--card);color:var(--ink);font-family:var(--fb);font-size:.9rem}
+.search-form input:focus{outline:none;border-color:var(--p)}
+.search-form button{flex:0 0 auto;padding:8px 12px;border-radius:999px;border:1.5px solid var(--line);
+background:var(--card);cursor:pointer;font-size:1rem;line-height:1}
+.search-form button:hover{border-color:var(--p)}
 nav.cats{display:flex;gap:8px;overflow-x:auto;padding:16px 0 6px;scrollbar-width:none;
 position:relative;-webkit-mask-image:linear-gradient(90deg,#000 0 92%,transparent);
 mask-image:linear-gradient(90deg,#000 0 92%,transparent)}
@@ -298,16 +305,31 @@ padding:14px 18px;margin:24px 0;border-top:1px solid var(--line);border-right:1p
 .backlink{display:inline-block;margin:8px 0 22px;font-family:var(--fl);font-weight:700;color:var(--pd)}
 
 /* pagination + footer */
-.pager{display:flex;justify-content:center;gap:12px;margin:8px 0 40px;font-family:var(--fl);font-weight:700}
-.pager a,.pager span{padding:9px 18px;border-radius:999px;border:1.5px solid var(--line);background:var(--card)}
+.pager{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px;margin:8px 0 14px;font-family:var(--fl);font-weight:700}
+.pager a,.pager span{padding:8px 14px;border-radius:999px;border:1.5px solid var(--line);background:var(--card);min-width:40px;text-align:center}
+.pager a.pager-nav,.pager span.pager-nav{padding:8px 16px;min-width:auto}
 .pager a:hover{border-color:var(--p)}
 .pager .cur{background:var(--ink);color:var(--card);border-color:var(--ink)}
+.pager-ellipsis{border:none!important;background:none!important;color:var(--muted);padding:8px 2px!important;min-width:auto!important}
+.pager-jump{display:flex;justify-content:center;gap:8px;margin:0 0 40px}
+.pager-jump input{width:84px;padding:8px 12px;border-radius:999px;border:1.5px solid var(--line);
+background:var(--card);color:var(--ink);font-family:var(--fl);text-align:center}
+.pager-jump button{padding:8px 16px;border-radius:999px;border:1.5px solid var(--line);
+background:var(--card);font-family:var(--fl);font-weight:700;cursor:pointer}
+.pager-jump button:hover{border-color:var(--p)}
 footer{border-top:1px solid var(--line);margin-top:20px;padding:30px 0 40px;background:var(--card)}
 footer .mission{max-width:56ch;color:var(--muted);margin:8px 0 16px}
 footer .fnav{display:flex;gap:18px;flex-wrap:wrap;font-family:var(--fl);font-weight:700;font-size:.9rem}
 footer .fine{color:var(--muted);font-size:.8rem;margin-top:18px}
 .about{max-width:720px;margin:10px auto 44px}
 .about h1{font-family:var(--fd);font-weight:800;font-size:2.1rem;letter-spacing:-.02em}
+.search-page{max-width:820px;margin:10px auto 20px}
+.search-page h1{font-family:var(--fd);font-weight:800;font-size:2.1rem;letter-spacing:-.02em;margin:0 0 18px}
+.search-form-main{margin:0 0 20px}
+.search-form-main input{width:100%;padding:14px 20px;border-radius:999px;border:1.5px solid var(--line);
+background:var(--card);color:var(--ink);font-family:var(--fb);font-size:1.05rem}
+.search-form-main input:focus{outline:none;border-color:var(--p)}
+.search-status{color:var(--muted);font-family:var(--fl);font-size:.9rem;margin:0 0 16px}
 .editor-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
 padding:20px 22px;margin:20px 0 6px}
 .editor-name{font-family:var(--fd);font-weight:800;font-size:1.15rem}
@@ -326,6 +348,7 @@ text-transform:uppercase;letter-spacing:.05em;margin:2px 0 10px}
  .hero p.teaser{margin:0 0 14px;font-size:.98rem}
  .hero-art svg.side{opacity:.35}
  .today{display:none}
+ .search-form{max-width:none;flex:1 1 100%;margin-left:0}
 }
 @media (prefers-reduced-motion:reduce){
  *{transition:none!important;animation:none!important}html{scroll-behavior:auto}
@@ -634,6 +657,10 @@ def header(site, active: str | None = None, is_home: bool = False) -> str:
 {mark_svg(cfg)}
 <div class="brand"><a href="{site.u('/')}" aria-label="{esc(cfg['site_name'])}">{brand_name}</a>
 <p>{esc(cfg['tagline'])}</p></div>
+<form class="search-form" action="{site.u('/search/')}" method="get" role="search">
+<input type="search" name="q" placeholder="{esc(ui.get('search_placeholder', 'Search'))}" aria-label="{esc(ui.get('search_placeholder', 'Search'))}">
+<button type="submit" aria-label="{esc(ui.get('search_button', 'Search'))}">🔍</button>
+</form>
 <span class="today">{esc(fmt_today(cfg['lang']))}</span>
 </div>
 <nav class="cats" aria-label="categories">{chips}</nav>
@@ -704,11 +731,38 @@ def pager(site, base_path: str, page: int, pages: int) -> str:
 
     parts = []
     if page > 1:
-        parts.append(f'<a href="{link(page - 1)}">← {ui["newer"]}</a>')
-    parts.append(f'<span class="cur">{ui["page"]} {page} / {pages}</span>')
+        parts.append(f'<a href="{link(page - 1)}" class="pager-nav">← {ui["newer"]}</a>')
+
+    # Compact numbered window: always show first and last page, plus a small
+    # window around the current page, collapsing gaps with an ellipsis —
+    # e.g. "1 … 8 9 [10] 11 12 … 20" instead of forcing next/prev-only clicks.
+    window = 2
+    shown = sorted({1, pages, page, *(p for p in range(page - window, page + window + 1))} & set(range(1, pages + 1)))
+    last_shown = 0
+    for p in shown:
+        if last_shown and p - last_shown > 1:
+            parts.append('<span class="pager-ellipsis">…</span>')
+        if p == page:
+            parts.append(f'<span class="cur">{p}</span>')
+        else:
+            parts.append(f'<a href="{link(p)}">{p}</a>')
+        last_shown = p
+
     if page < pages:
-        parts.append(f'<a href="{link(page + 1)}">{ui["older"]} →</a>')
-    return f'<nav class="pager" aria-label="pagination">{"".join(parts)}</nav>'
+        parts.append(f'<a href="{link(page + 1)}" class="pager-nav">{ui["older"]} →</a>')
+
+    # Jump-to-page input — the numbered window above covers nearby pages and
+    # the endpoints in one click, but a direct jump from page 1 to page 14 of
+    # 20 needs this rather than several intermediate clicks.
+    base_js = site.u(base_path).rstrip("/")
+    jump = f"""<form class="pager-jump" onsubmit="event.preventDefault();
+var n=parseInt(this.pagenum.value,10);
+if(n>=1&&n<={pages}){{ window.location.href = n===1 ? '{site.u(base_path)}' : '{base_js}/page/'+n+'/'; }}">
+<input type="number" name="pagenum" min="1" max="{pages}" placeholder="{esc(ui.get('go_to_page', 'Page #'))}" aria-label="{esc(ui.get('go_to_page', 'Go to page'))}">
+<button type="submit">{esc(ui.get('go', 'Go'))}</button>
+</form>"""
+
+    return f'<nav class="pager" aria-label="pagination">{"".join(parts)}</nav>{jump}'
 
 
 def write(path: Path, text: str) -> None:
@@ -1206,6 +1260,95 @@ def build_sitemap(site, tag_slugs: set) -> None:
 
 # --------------------------------------------------------------- main -----
 
+def build_search_index(site) -> None:
+    """Lightweight client-side search index — headline, summary, category,
+    and tags for every real article. Deliberately excludes full body text to
+    keep the file small; enough for readers to find a specific article by
+    title/topic/tag. Short keys (t/s/u/c/g/d) keep the JSON compact across
+    a few hundred articles."""
+    cfg = site.cfg
+    items = []
+    for a in site.articles:
+        cat = cfg["categories"].get(a["category"], {})
+        items.append({
+            "t": a["headline"], "s": a["summary_short"],
+            "u": site.u(site.article_path(a)), "c": cat.get("label", ""),
+            "g": a.get("tags", []), "d": a["published"][:10],
+        })
+    write(DIST / "search-index.json", json.dumps(items, ensure_ascii=False))
+
+
+def build_search_page(site) -> None:
+    """A static page that fetches search-index.json and filters it entirely
+    client-side — no backend needed. Supports a shareable ?q= URL and live
+    filtering as the user types. Noindexed, since internal search-result
+    pages shouldn't be indexed individually (thin/duplicate-content risk)."""
+    cfg, ui = site.cfg, site.cfg["ui"]
+    index_url = site.u("/search-index.json")
+    title_text = ui.get("search_title", "Search")
+    placeholder = ui.get("search_placeholder", "Search articles…")
+    no_results = ui.get("no_results", "No results found.")
+    results_word = ui.get("results_word", "result(s)")
+    search_error = ui.get("search_error", "Search is temporarily unavailable.")
+    body = f"""<div class="search-page">
+<h1>{esc(title_text)}</h1>
+<form class="search-form-main" onsubmit="return false;">
+<input type="search" id="search-input" placeholder="{esc(placeholder)}" aria-label="{esc(placeholder)}" autofocus>
+</form>
+<div id="search-status" class="search-status"></div>
+<div id="search-results" class="grid"></div>
+</div>
+<script>
+(function(){{
+  var input = document.getElementById('search-input');
+  var results = document.getElementById('search-results');
+  var status = document.getElementById('search-status');
+  var index = null;
+  var params = new URLSearchParams(window.location.search);
+  var initialQ = params.get('q') || '';
+  input.value = initialQ;
+
+  function esc(s){{ var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }}
+
+  function render(items, q){{
+    if (!q) {{ status.textContent = ''; results.innerHTML = ''; return; }}
+    if (!items.length) {{ status.textContent = {json.dumps(no_results)}; results.innerHTML = ''; return; }}
+    status.textContent = items.length + ' ' + {json.dumps(results_word)};
+    results.innerHTML = items.map(function(a){{
+      return '<article class="card"><div class="cbody">' +
+        '<h3><a href="' + a.u + '">' + esc(a.t) + '</a></h3>' +
+        '<p>' + esc(a.s) + '</p>' +
+        '<div class="meta"><span class="cat">' + esc(a.c) + '</span> · <time>' + a.d + '</time></div>' +
+        '</div></article>';
+    }}).join('');
+  }}
+
+  function doSearch(){{
+    var q = input.value.trim().toLowerCase();
+    var url = new URL(window.location);
+    if (q) {{ url.searchParams.set('q', q); }} else {{ url.searchParams.delete('q'); }}
+    window.history.replaceState({{}}, '', url);
+    if (!index || !q) {{ render([], q); return; }}
+    var matches = index.filter(function(a){{
+      var hay = (a.t + ' ' + a.s + ' ' + (a.g || []).join(' ')).toLowerCase();
+      return hay.indexOf(q) !== -1;
+    }});
+    render(matches, q);
+  }}
+
+  input.addEventListener('input', doSearch);
+  fetch('{index_url}').then(function(r){{ return r.json(); }}).then(function(data){{
+    index = data;
+    if (initialQ) doSearch();
+  }}).catch(function(){{ status.textContent = {json.dumps(search_error)}; }});
+}})();
+</script>"""
+    path = "/search/"
+    write(DIST / "search" / "index.html",
+          base_page(site, title=f'{title_text} · {cfg["site_name"]}',
+                    description=placeholder, path=path, body=body, noindex=True))
+
+
 def build_llms_txt(site) -> None:
     cfg = site.cfg
     recent = "\n".join(f'- {a["headline"]}: {site.abs_(site.article_path(a))}' for a in site.articles[:15])
@@ -1273,6 +1416,8 @@ def main() -> None:
     build_sitemap(site, qualifying_tag_slugs)
     build_news_sitemap(site)
     build_rsl(site)
+    build_search_index(site)
+    build_search_page(site)
     build_llms_txt(site)
     print(f"[{cfg['site_name']}] built {len(articles)} articles → {DIST}")
 
