@@ -836,9 +836,41 @@ def count_articles_by_category(cfg: dict) -> dict:
     return counts
 
 
+def count_guides_by_category(cfg: dict) -> dict:
+    """Count existing pillar/guide articles per category — used to prefer
+    spreading new guides across categories that don't have one yet, rather
+    than piling multiple guides into whichever category happens to be
+    thinnest by regular-article count every single run."""
+    counts = {cid: 0 for cid in cfg["categories"]}
+    if not CONTENT_DIR.exists():
+        return counts
+    for path in CONTENT_DIR.rglob("*.json"):
+        try:
+            with open(path, encoding="utf-8-sig") as f:
+                a = json.load(f)
+        except Exception:
+            continue
+        cid = a.get("category")
+        if cid in counts and a.get("pillar"):
+            counts[cid] += 1
+    return counts
+
+
 def pick_thinnest_category(cfg: dict) -> str:
-    counts = count_articles_by_category(cfg)
-    return min(counts, key=counts.get)
+    """Pick the category to target for the next generated guide. Prefers
+    categories with zero existing guides first — regular-article counts
+    don't change when a guide is added, so without this preference a
+    category tied for 'thinnest' keeps winning every run, piling multiple
+    guides into the same category instead of spreading across categories
+    that have none yet. Falls back to fewest guides overall (tie-broken by
+    article count) once every category already has at least one."""
+    article_counts = count_articles_by_category(cfg)
+    guide_counts = count_guides_by_category(cfg)
+    no_guide_yet = [cid for cid in cfg["categories"] if guide_counts.get(cid, 0) == 0]
+    if no_guide_yet:
+        return min(no_guide_yet, key=lambda cid: article_counts.get(cid, 0))
+    return min(cfg["categories"],
+               key=lambda cid: (guide_counts.get(cid, 0), article_counts.get(cid, 0)))
 
 
 def load_existing_guide_topics(category_id: str) -> list[str]:
