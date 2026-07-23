@@ -50,6 +50,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
   pages: write
   id-token: write
 
@@ -91,19 +92,33 @@ jobs:
           fi
           python pipeline.py $ARGS
 
-      - name: Commit progress (after rewrite)
-        # Commits immediately so a later cancelled/failed step (e.g. the
-        # build) can never discard work this step already completed and
-        # paid for. Does nothing if there's nothing new to commit.
+      - name: Open review PR (after rewrite)
+        # Opens a PR instead of committing to main directly — nothing goes
+        # live until a human merges it. Does nothing if there's nothing new
+        # to review. Ends back on main so later steps (like the site build)
+        # only ever see already-approved content, never anything pending.
         if: github.event.inputs.rewrite_articles == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "good-news-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add content
           if ! git diff --cached --quiet; then
-            git commit -m "Rewrite pass $(date -u +'%Y-%m-%d %H:%M')"
-            git pull --rebase origin main
-            git push
+            BRANCH="review/rewrite-$(date -u +%Y%m%d-%H%M%S)"
+            git checkout -b "$BRANCH"
+            git commit -m "Rewrite pass $(date -u +'%Y-%m-%d %H:%M') — pending review"
+            git push origin "$BRANCH"
+            if [ -f pr_description.md ]; then
+              gh pr create --base main --head "$BRANCH" \
+                --title "Review: rewritten articles — $(date -u +'%Y-%m-%d %H:%M')" \
+                --body-file pr_description.md
+            else
+              gh pr create --base main --head "$BRANCH" \
+                --title "Review: rewritten articles — $(date -u +'%Y-%m-%d %H:%M')" \
+                --body "Rewritten articles ready for review — see Files changed."
+            fi
+            git checkout main
           fi
 
       - name: List candidates (diagnostic, no publishing)
@@ -116,16 +131,29 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python pipeline.py --recover
 
-      - name: Commit progress (after recover)
+      - name: Open review PR (after recover)
         if: github.event.inputs.recover == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "good-news-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add content
           if ! git diff --cached --quiet; then
-            git commit -m "Recovered stories $(date -u +'%Y-%m-%d %H:%M')"
-            git pull --rebase origin main
-            git push
+            BRANCH="review/recover-$(date -u +%Y%m%d-%H%M%S)"
+            git checkout -b "$BRANCH"
+            git commit -m "Recovered stories $(date -u +'%Y-%m-%d %H:%M') — pending review"
+            git push origin "$BRANCH"
+            if [ -f pr_description.md ]; then
+              gh pr create --base main --head "$BRANCH" \
+                --title "Review: recovered stories — $(date -u +'%Y-%m-%d %H:%M')" \
+                --body-file pr_description.md
+            else
+              gh pr create --base main --head "$BRANCH" \
+                --title "Review: recovered stories — $(date -u +'%Y-%m-%d %H:%M')" \
+                --body "Recovered stories ready for review — see Files changed."
+            fi
+            git checkout main
           fi
 
       - name: Generate an evergreen guide article (one-off)
@@ -139,16 +167,29 @@ jobs:
             python pipeline.py --generate-guide --guide-count "${{ github.event.inputs.guide_count }}"
           fi
 
-      - name: Commit progress (after guide generation)
+      - name: Open review PR (after guide generation)
         if: github.event.inputs.generate_guide == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "good-news-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add content
           if ! git diff --cached --quiet; then
-            git commit -m "New guide article $(date -u +'%Y-%m-%d %H:%M')"
-            git pull --rebase origin main
-            git push
+            BRANCH="review/guide-$(date -u +%Y%m%d-%H%M%S)"
+            git checkout -b "$BRANCH"
+            git commit -m "New guide article $(date -u +'%Y-%m-%d %H:%M') — pending review"
+            git push origin "$BRANCH"
+            if [ -f pr_description.md ]; then
+              gh pr create --base main --head "$BRANCH" \
+                --title "Review: new guide article — $(date -u +'%Y-%m-%d %H:%M')" \
+                --body-file pr_description.md
+            else
+              gh pr create --base main --head "$BRANCH" \
+                --title "Review: new guide article — $(date -u +'%Y-%m-%d %H:%M')" \
+                --body "New guide ready for review — see Files changed."
+            fi
+            git checkout main
           fi
 
       - name: Fetch and write new stories (AI pipeline)
@@ -163,19 +204,43 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python pipeline.py --backfill-photos
 
-      - name: Commit new stories
-        # Safety-net final commit — catches the daily-pipeline and backfill-photos
-        # paths (which don't have their own dedicated commit step above), and is a
-        # harmless no-op for any path that already committed its own work.
-        if: github.event_name != 'push'
+      - name: Commit photo backfill (direct — no review needed)
+        # Adding a photo to an already-approved article isn't new editorial
+        # content, so this stays a direct commit rather than a review PR.
+        if: github.event.inputs.backfill_photos == 'true'
         run: |
           git config user.name "good-news-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add content
           if ! git diff --cached --quiet; then
-            git commit -m "New good news $(date -u +'%Y-%m-%d %H:%M')"
+            git commit -m "Photo backfill $(date -u +'%Y-%m-%d %H:%M')"
             git pull --rebase origin main
             git push
+          fi
+
+      - name: Open review PR (daily pipeline)
+        if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true' && github.event.inputs.check_feeds != 'true' && github.event.inputs.recover != 'true' && github.event.inputs.list_candidates != 'true' && github.event.inputs.rewrite_articles != 'true' && github.event.inputs.generate_guide != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "good-news-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add content
+          if ! git diff --cached --quiet; then
+            BRANCH="review/daily-$(date -u +%Y%m%d-%H%M%S)"
+            git checkout -b "$BRANCH"
+            git commit -m "New good news $(date -u +'%Y-%m-%d %H:%M') — pending review"
+            git push origin "$BRANCH"
+            if [ -f pr_description.md ]; then
+              gh pr create --base main --head "$BRANCH" \
+                --title "Review: daily good news — $(date -u +'%Y-%m-%d %H:%M')" \
+                --body-file pr_description.md
+            else
+              gh pr create --base main --head "$BRANCH" \
+                --title "Review: daily good news — $(date -u +'%Y-%m-%d %H:%M')" \
+                --body "New articles ready for review — see Files changed."
+            fi
+            git checkout main
           fi
 
       - name: Build the site
