@@ -16,9 +16,6 @@
   "source_url": "https://www.24chasa.bg/ozhivlenie/article/23223548",
   "published": "2026-07-15T05:03:54Z",
   "lang": "bg",
-  "photo_url": "https://images.pexels.com/photos/7661484/pexels-photo-7661484.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
-  "photo_credit": "Mikhail Nilov",
-  "photo_credit_url": "https://www.pexels.com/@mikhail-nilov",
   "rewritten": "2026-07-22T10:20:56Z",
   "quick_facts": [
     "Над 600 кандидати, останали само 10 след първото сито",
@@ -26,5 +23,7 @@
     "Йовчев в безсъзнание около 40 минути по време на изпитанието",
     "Александров и Наков карали еднакви жълти лади",
     "Александров лети в Космоса цяло десетилетие по-късно"
-  ]
+  ],
+  "image_path": "/assets/articles/aleksandrov-kosmos-aut-izbor-4c64-52ed6358.webp",
+  "image_credit": "AI-generated illustration"
 }

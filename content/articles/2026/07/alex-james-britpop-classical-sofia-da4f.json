@@ -17,9 +17,6 @@
   "source_url": "https://www.bta.bg/bg/news/lik/1163000-aleks-dzheyms-ot-blur-idva-v-sofiya-s-shouto-britpop-classical",
   "published": "2026-07-08T07:37:12Z",
   "lang": "bg",
-  "photo_url": "https://images.pexels.com/photos/167605/pexels-photo-167605.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
-  "photo_credit": "Thibault Trillet",
-  "photo_credit_url": "https://www.pexels.com/@thibault-trillet-44912",
   "rewritten": "2026-07-22T10:21:57Z",
   "quick_facts": [
     "Дата: 5 декември, зала 1 на НДК, София",
@@ -27,5 +24,7 @@
     "Гости: Фил Даниелс, Сафрон от Republica, Гари Стрингър от Reef",
     "Организатор: „БГ саунд стейдж“",
     "Песни: Wonderwall, Common People, Live Forever, Creep"
-  ]
+  ],
+  "image_path": "/assets/articles/alex-james-britpop-classical-sofia-da4f-daffb250.webp",
+  "image_credit": "AI-generated illustration"
 }

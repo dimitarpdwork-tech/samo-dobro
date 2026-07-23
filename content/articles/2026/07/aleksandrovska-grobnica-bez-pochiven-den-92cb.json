@@ -17,9 +17,6 @@
   "source_url": "https://www.bta.bg/bg/news/lik/1170740-aleksandrovskata-grobnitsa-shte-raboti-bez-pochiven-den-ot-avgust-saobshtiha-ot",
   "published": "2026-07-21T08:39:28Z",
   "lang": "bg",
-  "photo_url": "https://images.pexels.com/photos/12952873/pexels-photo-12952873.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
-  "photo_credit": "Yunus Emre Ilıca",
-  "photo_credit_url": "https://www.pexels.com/@yunusemrelca",
   "quick_facts": [
     "Музеен център край село Александрово, община Хасково",
     "Работно време от 8:00 до 18:00 часа, без почивен ден от август",
@@ -27,5 +24,7 @@
     "Част е от Стоте национални туристически обекта",
     "Стопанисва се от Регионалния исторически музей в Хасково"
   ],
-  "rewritten": "2026-07-22T10:21:26Z"
+  "rewritten": "2026-07-22T10:21:26Z",
+  "image_path": "/assets/articles/aleksandrovska-grobnica-bez-pochiven-den-92cb-29bfa152.webp",
+  "image_credit": "AI-generated illustration"
 }
