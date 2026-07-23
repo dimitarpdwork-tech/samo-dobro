@@ -213,6 +213,12 @@ nav.cats{display:flex;gap:8px;overflow-x:auto;padding:16px 0 6px;scrollbar-width
 position:relative;-webkit-mask-image:linear-gradient(90deg,#000 0 92%,transparent);
 mask-image:linear-gradient(90deg,#000 0 92%,transparent)}
 nav.cats::-webkit-scrollbar{display:none}
+.cats-wrap{position:relative}
+.cats-more{position:absolute;right:-2px;top:0;bottom:6px;display:flex;align-items:center;
+pointer-events:none;font-size:1.4rem;font-weight:900;color:var(--p);
+background:linear-gradient(90deg,transparent,var(--bg) 55%);padding:0 2px 0 24px;
+transition:opacity .2s}
+.cats-wrap.at-end .cats-more{opacity:0}
 .chip{flex:0 0 auto;font-family:var(--fl);font-size:.83rem;font-weight:700;letter-spacing:.04em;
 padding:13px 16px;min-height:48px;display:inline-flex;align-items:center;border-radius:999px;
 border:1.5px solid var(--line);background:var(--card);color:var(--ink);
@@ -596,7 +602,7 @@ def cookie_banner(site) -> str:
     cfg, ui = site.cfg, site.cfg["ui"]
     if not analytics_ads_enabled(cfg):
         return ""
-    return f"""<div id="cookie-banner" class="cookie-banner" hidden role="dialog" aria-label="{esc(ui.get('cookie_accept', 'Accept'))}">
+    return f"""<div id="cookie-banner" class="cookie-banner" hidden role="dialog" aria-label="{esc(ui.get('cookie_dialog_label', 'Cookie consent'))}">
 <p>{esc(ui.get('cookie_text', 'We use cookies for anonymous analytics.'))} <a href="{site.u('/' + cfg['privacy_path'] + '/')}">{esc(ui.get('privacy', 'Privacy'))}</a></p>
 <div class="cookie-actions">
 <button id="cookie-reject" type="button">{esc(ui.get('cookie_reject', 'Reject'))}</button>
@@ -694,7 +700,23 @@ def header(site, active: str | None = None, is_home: bool = False) -> str:
 </form>
 <span class="today">{esc(fmt_today(cfg['lang']))}</span>
 </div>
+<div class="cats-wrap">
 <nav class="cats" aria-label="categories">{chips}</nav>
+<span class="cats-more" aria-hidden="true">›</span>
+</div>
+<script>
+(function(){{
+  var nav = document.querySelector('nav.cats');
+  var wrap = document.querySelector('.cats-wrap');
+  if (!nav || !wrap) return;
+  function check(){{
+    if (nav.scrollWidth - nav.scrollLeft - nav.clientWidth < 8) wrap.classList.add('at-end');
+    else wrap.classList.remove('at-end');
+  }}
+  nav.addEventListener('scroll', check, {{passive: true}});
+  check();
+}})();
+</script>
 </header>"""
 
 
