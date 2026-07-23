@@ -17,7 +17,7 @@
   "adsense_client_id": "",
   "indexnow_key": "e77c9341d37259529c6d283e30522ec0",
   "pexels_api_key": "",
-  "image_provider": "pexels",
+  "image_provider": "fal",
   "fallback_to_pexels": true,
   "founding_date": "2026-07-01",
   "tag_aliases": {
