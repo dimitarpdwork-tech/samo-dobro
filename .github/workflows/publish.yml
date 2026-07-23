@@ -13,6 +13,14 @@ on:
         description: "One-off: regenerate the image for ONE specific article — enter its slug (the part of the URL after /novina/), e.g. atp-wta-ranglista-obyasnena-9825. Opens a review PR so you can look at the new image before it ships."
         type: string
         default: ""
+      regenerate_all_images:
+        description: "One-off: bulk-convert existing Pexels photos to AI-generated images (config.json's image_provider). Use image_limit below to cap cost/size — recommend starting small."
+        type: boolean
+        default: false
+      image_limit:
+        description: "Only used with regenerate_all_images: cap how many articles this run touches. Leave blank to process ALL Pexels-sourced articles at once — not recommended until you've tested a small batch."
+        type: string
+        default: ""
       check_feeds:
         description: "One-off: just test every RSS feed and report which work (no publishing)"
         type: boolean
@@ -215,7 +223,7 @@ jobs:
           fi
 
       - name: Fetch and write new stories (AI pipeline)
-        if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true' && github.event.inputs.regenerate_image == '' && github.event.inputs.check_feeds != 'true' && github.event.inputs.recover != 'true' && github.event.inputs.list_candidates != 'true' && github.event.inputs.rewrite_articles != 'true' && github.event.inputs.generate_guide != 'true'
+        if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true' && github.event.inputs.regenerate_image == '' && github.event.inputs.regenerate_all_images != 'true' && github.event.inputs.check_feeds != 'true' && github.event.inputs.recover != 'true' && github.event.inputs.list_candidates != 'true' && github.event.inputs.rewrite_articles != 'true' && github.event.inputs.generate_guide != 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
@@ -283,6 +291,48 @@ jobs:
             fi
             git checkout main
           fi
+
+      - name: Bulk-regenerate existing photos (one-off)
+        if: github.event.inputs.regenerate_all_images == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          FAL_API_KEY: ${{ secrets.FAL_API_KEY }}
+        run: |
+          if [ -n "${{ github.event.inputs.image_limit }}" ]; then
+            python pipeline.py --regenerate-all-images --image-limit "${{ github.event.inputs.image_limit }}"
+          else
+            python pipeline.py --regenerate-all-images
+          fi
+
+      - name: Open review PR (after bulk image regeneration)
+        if: github.event.inputs.regenerate_all_images == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "good-news-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add content
+          if [ -d assets/articles ]; then git add assets/articles; fi
+          if ! git diff --cached --quiet; then
+            BRANCH="review/bulk-images-$(date -u +%Y%m%d-%H%M%S)"
+            git checkout -b "$BRANCH"
+            git commit -m "Bulk photo regeneration for review — $(date -u +'%Y-%m-%d %H:%M')"
+            git push origin "$BRANCH"
+            PR_URL="https://github.com/${{ github.repository }}/pull/new/$BRANCH"
+            if [ -f pr_description.md ]; then
+              gh pr create --base main --head "$BRANCH" \
+                --title "Review: bulk photo regeneration — $(date -u +'%Y-%m-%d %H:%M')" \
+                --body-file pr_description.md \
+                || echo "Could not auto-create the PR (often a repo setting — Settings > Actions > General > Workflow permissions > allow PR creation). The branch and commit are safe regardless — open this URL to create the PR manually: $PR_URL"
+            else
+              gh pr create --base main --head "$BRANCH" \
+                --title "Review: bulk photo regeneration — $(date -u +'%Y-%m-%d %H:%M')" \
+                --body "Photos regenerated for review — see Files changed." \
+                || echo "Could not auto-create the PR — open this URL to create it manually: $PR_URL"
+            fi
+            git checkout main
+          fi
           if [ -d assets/articles ]; then git add assets/articles; fi
           if ! git diff --cached --quiet; then
             git commit -m "Photo backfill $(date -u +'%Y-%m-%d %H:%M')"
@@ -291,7 +341,7 @@ jobs:
           fi
 
       - name: Open review PR (daily pipeline)
-        if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true' && github.event.inputs.regenerate_image == '' && github.event.inputs.check_feeds != 'true' && github.event.inputs.recover != 'true' && github.event.inputs.list_candidates != 'true' && github.event.inputs.rewrite_articles != 'true' && github.event.inputs.generate_guide != 'true'
+        if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true' && github.event.inputs.regenerate_image == '' && github.event.inputs.regenerate_all_images != 'true' && github.event.inputs.check_feeds != 'true' && github.event.inputs.recover != 'true' && github.event.inputs.list_candidates != 'true' && github.event.inputs.rewrite_articles != 'true' && github.event.inputs.generate_guide != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
