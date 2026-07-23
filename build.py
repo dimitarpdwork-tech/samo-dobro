@@ -540,12 +540,17 @@ def org_ld(site) -> dict:
 
 
 def author_ld(site) -> dict:
-    """Article authorship is always attributed to the automated editorial
-    system as an Organization, never to a fabricated human Person — see
-    /<about_path>/#editorial-process for the disclosed process. Set
-    'byline_name' in config.json to customize the displayed name (defaults
-    to '<site_name> AI Editorial System')."""
+    """Article authorship — a real named Person if config.json sets
+    'editor_name' (meaning that person genuinely reviews/approves every
+    article via the site's real review-PR workflow before it publishes),
+    or the honest Organization fallback otherwise. Never a fabricated
+    Person with invented credentials — see /<about_path>/#editorial-process
+    for the disclosed process."""
     cfg = site.cfg
+    editor_name = cfg.get("editor_name", "")
+    if editor_name:
+        return {"@type": "Person", "name": editor_name,
+                "url": site.abs_(f'/{cfg["about_path"]}/#editorial-process')}
     name = cfg.get("byline_name", f'{cfg["site_name"]} AI Editorial System')
     return {"@type": "Organization", "name": name,
             "url": site.abs_(f'/{cfg["about_path"]}/#editorial-process')}
@@ -1168,11 +1173,17 @@ def build_articles(site, linked_tags: set) -> None:
             items = "".join(f"<li>{esc(f)}</li>" for f in quick_facts)
             quick_facts_html = (f'<ul class="quick-facts" '
                                  f'aria-label="{esc(ui.get("quick_facts_label", "Quick facts"))}">{items}</ul>')
+        editor_name = cfg.get("editor_name", "")
+        if editor_name:
+            byline_text = (f'{esc(ui.get("ai_written_label", "AI-written"))}, '
+                            f'{esc(ui.get("reviewed_by_label", "reviewed by"))} {esc(editor_name)}')
+        else:
+            byline_text = f'{esc(ui.get("byline_label", "Compiled by"))} {esc(cfg.get("byline_name", cfg["site_name"] + " AI"))}'
         body = f"""<article class="article">
 <a class="backlink" href="{site.u('/')}">← {esc(ui['back_home'])}</a>
 {meta_row(site, a)}
 <h1>{esc(a['headline'])}</h1>
-<span class="byline">{esc(ui.get('byline_label', 'Compiled by'))} {esc(cfg.get('byline_name', cfg['site_name'] + ' AI'))} · <a href="{site.u('/' + cfg['about_path'] + '/#editorial-process')}">{esc(ui.get('how_it_works', 'How this works'))}</a></span>
+<span class="byline">{byline_text} · <a href="{site.u('/' + cfg['about_path'] + '/#editorial-process')}">{esc(ui.get('how_it_works', 'How this works'))}</a></span>
 {f'<span class="ai-badge">{esc(ui.get("ai_badge", "AI-summarized"))}</span>' if not a.get('no_ai_badge') else ''}
 {quick_facts_html}
 <div class="banner">{media(cfg, a, ui, height=250, eager=True, sizes="(max-width: 760px) 100vw, 720px")}</div>
