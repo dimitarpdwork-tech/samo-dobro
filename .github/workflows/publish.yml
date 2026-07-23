@@ -82,6 +82,8 @@ jobs:
         if: github.event.inputs.rewrite_articles == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          FAL_API_KEY: ${{ secrets.FAL_API_KEY }}
         run: |
           ARGS="--rewrite-articles"
           if [ "${{ github.event.inputs.rewrite_force }}" = "true" ]; then
@@ -104,6 +106,7 @@ jobs:
           git config user.name "good-news-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add content
+          if [ -d assets/articles ]; then git add assets/articles; fi
           if ! git diff --cached --quiet; then
             BRANCH="review/rewrite-$(date -u +%Y%m%d-%H%M%S)"
             git checkout -b "$BRANCH"
@@ -132,6 +135,8 @@ jobs:
         if: github.event.inputs.recover == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          FAL_API_KEY: ${{ secrets.FAL_API_KEY }}
         run: python pipeline.py --recover
 
       - name: Open review PR (after recover)
@@ -142,6 +147,7 @@ jobs:
           git config user.name "good-news-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add content
+          if [ -d assets/articles ]; then git add assets/articles; fi
           if ! git diff --cached --quiet; then
             BRANCH="review/recover-$(date -u +%Y%m%d-%H%M%S)"
             git checkout -b "$BRANCH"
@@ -166,6 +172,8 @@ jobs:
         if: github.event.inputs.generate_guide == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          FAL_API_KEY: ${{ secrets.FAL_API_KEY }}
         run: |
           if [ -n "${{ github.event.inputs.guide_category }}" ]; then
             python pipeline.py --generate-guide --guide-category "${{ github.event.inputs.guide_category }}" --guide-count "${{ github.event.inputs.guide_count }}"
@@ -181,6 +189,7 @@ jobs:
           git config user.name "good-news-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add content
+          if [ -d assets/articles ]; then git add assets/articles; fi
           if ! git diff --cached --quiet; then
             BRANCH="review/guide-$(date -u +%Y%m%d-%H%M%S)"
             git checkout -b "$BRANCH"
@@ -205,12 +214,16 @@ jobs:
         if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true' && github.event.inputs.check_feeds != 'true' && github.event.inputs.recover != 'true' && github.event.inputs.list_candidates != 'true' && github.event.inputs.rewrite_articles != 'true' && github.event.inputs.generate_guide != 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          FAL_API_KEY: ${{ secrets.FAL_API_KEY }}
         run: python pipeline.py
 
       - name: Backfill photos on existing articles (one-off)
         if: github.event.inputs.backfill_photos == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          FAL_API_KEY: ${{ secrets.FAL_API_KEY }}
         run: python pipeline.py --backfill-photos
 
       - name: Commit photo backfill (direct — no review needed)
@@ -221,6 +234,7 @@ jobs:
           git config user.name "good-news-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add content
+          if [ -d assets/articles ]; then git add assets/articles; fi
           if ! git diff --cached --quiet; then
             git commit -m "Photo backfill $(date -u +'%Y-%m-%d %H:%M')"
             git pull --rebase origin main
@@ -235,6 +249,7 @@ jobs:
           git config user.name "good-news-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add content
+          if [ -d assets/articles ]; then git add assets/articles; fi
           if ! git diff --cached --quiet; then
             BRANCH="review/daily-$(date -u +%Y%m%d-%H%M%S)"
             git checkout -b "$BRANCH"
