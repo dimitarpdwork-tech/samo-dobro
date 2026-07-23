@@ -730,11 +730,21 @@ def get_article_photo(cfg: dict, written: dict, slug: str) -> dict | None:
     new provider fully until it's proven out."""
     provider = cfg.get("image_provider", "pexels")
     if provider == "fal":
-        out_path = ROOT / "assets" / "articles" / f"{slug}.webp"
+        # A unique suffix per generation, not just the bare slug — a
+        # regeneration must get a genuinely new filename/URL, or a CDN in
+        # front of the site (Cloudflare here) can keep serving the old
+        # cached bytes at the old URL indefinitely, exactly what happened
+        # with the ATP/WTA rankings image: the new file was correctly
+        # generated and committed, but sat at the same URL as the stale
+        # cached version. This makes that entire class of problem
+        # impossible rather than requiring a manual cache purge each time.
+        suffix = hashlib.sha1(f"{slug}{time.time()}".encode()).hexdigest()[:8]
+        filename = f"{slug}-{suffix}.webp"
+        out_path = ROOT / "assets" / "articles" / filename
         result = generate_article_image(cfg, written.get("image_query", ""), out_path)
         if result:
             return {
-                "image_path": f"/assets/articles/{slug}.webp",
+                "image_path": f"/assets/articles/{filename}",
                 "image_credit": "AI-generated illustration",
             }
         if not cfg.get("fallback_to_pexels", True):
