@@ -318,6 +318,11 @@ background:var(--card);color:var(--ink);font-family:var(--fl);text-align:center}
 .pager-jump button{padding:8px 16px;border-radius:999px;border:1.5px solid var(--line);
 background:var(--card);font-family:var(--fl);font-weight:700;cursor:pointer}
 .pager-jump button:hover{border-color:var(--p)}
+.digest-list{display:flex;flex-direction:column;gap:18px;margin:20px 0}
+.digest-item{padding-bottom:16px;border-bottom:1px solid var(--line)}
+.digest-item:last-child{border-bottom:none}
+.digest-item h3{font-family:var(--fd);font-weight:800;font-size:1.15rem;margin:0 0 6px;letter-spacing:-.01em}
+.digest-item p{margin:0;color:var(--muted);font-size:.98rem}
 .city-grid{display:flex;flex-wrap:wrap;gap:10px;margin:20px 0}
 .city-chip{display:inline-flex;align-items:center;gap:8px;font-family:var(--fl);font-weight:700;
 font-size:.95rem;padding:10px 16px;border-radius:999px;border:1.5px solid var(--line);
@@ -457,13 +462,25 @@ def pexels_resize(url: str, width: int) -> str:
 
 def media(cfg, article, ui, height=180, eager=False,
           sizes="(max-width: 700px) 100vw, 292px") -> str:
-    """Real stock photo when the pipeline found one, generated SVG art otherwise.
-    Photo credit is a hard requirement of the free API's terms, not optional.
+    """Local AI-generated image first, real stock photo second, generated SVG
+    art otherwise. Photo credit is a hard requirement of the free Pexels API's
+    terms, not optional — AI-generated images get an honest 'AI-generated
+    illustration' label instead, consistent with the site's AI-disclosure
+    policy elsewhere.
     eager=True skips lazy-loading — use this only for the one above-the-fold
     image per page (the article's own banner), never for listing thumbnails.
     `sizes` should describe the actual rendered width in this context so the
     browser can pick the right srcset candidate — pass a wider value for the
     full-width article banner than for grid thumbnails."""
+    if article.get("image_path"):
+        # No srcset variants yet — only one resolution is generated per image
+        # currently (1200x675). A real limitation worth revisiting if this
+        # becomes the primary image source rather than a rollout in progress.
+        loading_attr = '' if eager else ' loading="lazy"'
+        credit = f'<span class="photo-credit">{esc(article.get("image_credit", "AI-generated illustration"))}</span>'
+        return (f'<div class="thumb" style="height:{height}px">'
+                f'<img src="{esc(article["image_path"])}" alt="{esc(article["headline"])}"{loading_attr}>'
+                f'{credit}</div>')
     if article.get("photo_url"):
         base_url = article["photo_url"]
         srcset = ", ".join(f"{esc(pexels_resize(base_url, w))} {w}w" for w in (400, 800, 1200))
@@ -653,6 +670,9 @@ def base_page(site, *, title, description, path, body, jsonld=None, og_type="web
 def header(site, active: str | None = None, is_home: bool = False) -> str:
     cfg, ui = site.cfg, site.cfg["ui"]
     chips = f'<a class="chip{" on" if active == "home" else ""}" href="{site.u("/")}">{esc(ui["home"])}</a>'
+    digest_path = cfg.get("digest_path", "today")
+    chips += (f'<a class="chip{" on" if active == "digest" else ""}" href="{site.u("/" + digest_path + "/")}">'
+              f'☀ {esc(ui.get("digest_title", "Today"))}</a>')
     for cid, cat in cfg["categories"].items():
         on = " on" if active == cid else ""
         chips += f'<a class="chip{on}" href="{site.u(site.cat_path(cid))}">{cat["emoji"]} {esc(cat["label"])}</a>'
@@ -679,7 +699,7 @@ def footer(site) -> str:
     year = datetime.now().year
     cities_link = ""
     if cfg.get("known_cities"):
-        cities_path = cfg.get("cities_path", "gradove")
+        cities_path = cfg.get("cities_path", "cities")
         cities_link = f'<a href="{site.u("/" + cities_path + "/")}">{esc(ui.get("cities_title", "Browse by City"))}</a>\n'
     return f"""<footer><div class="wrap">
 <strong style="font-family:var(--fd);font-size:1.05rem">{esc(cfg['site_name'])}</strong>
@@ -1030,7 +1050,7 @@ def build_city_index(site) -> None:
             cities.append((display_name, slug, len(data["articles"])))
     cities.sort(key=lambda c: c[2], reverse=True)
 
-    cities_path = cfg.get("cities_path", "gradove")
+    cities_path = cfg.get("cities_path", "cities")
     title = ui.get("cities_title", "Browse by City")
     if not cities:
         body = (f'<div class="about"><h1>{esc(title)}</h1>'
@@ -1046,6 +1066,46 @@ def build_city_index(site) -> None:
     path = f'/{cities_path}/'
     write(DIST / cities_path / "index.html",
           base_page(site, title=f'{title} · {cfg["site_name"]}', description=title, path=path, body=body))
+
+
+def build_daily_digest(site) -> None:
+    """Public 'Today's Good News' page — lists today's published articles at
+    a stable, bookmarkable URL. Serves two purposes: a real SEO landing page
+    for 'добри новини днес'-style queries (a Tier 2 keyword from the earlier
+    strategy discussion), and ready-to-copy content for composing the daily
+    newsletter by hand in MailerLite (or whatever tool) until/unless actual
+    sending is automated later."""
+    cfg, ui = site.cfg, site.cfg["ui"]
+    today = datetime.now(timezone.utc).date()
+    todays = [a for a in site.articles if a["_dt"].date() == today]
+    digest_path = cfg.get("digest_path", "today")
+    title = ui.get("digest_title", "Today's Good News")
+
+    if not todays:
+        body = (f'<div class="about"><h1>{esc(title)}</h1>'
+                 f'<p>{esc(ui.get("digest_empty", "No new stories published yet today — check back soon."))}</p></div>')
+        jsonld = None
+    else:
+        intro = ui.get("digest_intro", "A summary of the good news published today, {date}.").format(
+            date=fmt_today(cfg["lang"]))
+        items = "".join(
+            f'<article class="digest-item"><h3><a href="{site.u(site.article_path(a))}">{esc(a["headline"])}</a></h3>'
+            f'<p>{esc(a["summary_short"])}</p></article>'
+            for a in todays
+        )
+        body = (f'<div class="about"><h1>{esc(title)}</h1><p class="cat-intro">{esc(intro)}</p>'
+                f'<div class="digest-list">{items}</div></div>')
+        jsonld = [{"@context": "https://schema.org", "@type": "CollectionPage",
+                   "name": title, "url": site.abs_(f'/{digest_path}/'), "inLanguage": cfg["lang"],
+                   "mainEntity": {"@type": "ItemList", "itemListElement": [
+                       {"@type": "ListItem", "position": i + 1, "url": site.abs_(site.article_path(a))}
+                       for i, a in enumerate(todays)
+                   ]}}]
+
+    path = f'/{digest_path}/'
+    write(DIST / digest_path / "index.html",
+          base_page(site, title=f'{title} · {cfg["site_name"]}', description=title,
+                    path=path, body=body, jsonld=jsonld))
 
 
 def build_articles(site, linked_tags: set) -> None:
@@ -1099,7 +1159,12 @@ def build_articles(site, linked_tags: set) -> None:
         path = site.article_path(a)
         crumbs = [(ui["home"], site.abs_("/")), (cat["label"], site.abs_(site.cat_path(a["category"]))),
                   (a["headline"], site.abs_(path))]
-        rich_image = pexels_resize(a["photo_url"], 1200) if a.get("photo_url") else site.abs_("/assets/og-default.png")
+        if a.get("image_path"):
+            rich_image = site.abs_(a["image_path"])
+        elif a.get("photo_url"):
+            rich_image = pexels_resize(a["photo_url"], 1200)
+        else:
+            rich_image = site.abs_("/assets/og-default.png")
         ld = {"@context": "https://schema.org", "@type": "NewsArticle",
               "headline": a["headline"], "description": a["meta_description"],
               "datePublished": a["published"], "dateModified": a.get("rewritten") or a.get("updated", a["published"]),
@@ -1484,6 +1549,7 @@ def main() -> None:
     build_search_index(site)
     build_search_page(site)
     build_city_index(site)
+    build_daily_digest(site)
     build_llms_txt(site)
     print(f"[{cfg['site_name']}] built {len(articles)} articles → {DIST}")
 
