@@ -1027,6 +1027,92 @@ Respond with ONLY the 2-4 word query, nothing else."""
     })
 
 
+def regenerate_all_images(cfg: dict, limit: int | None = None) -> None:
+    """Bulk-convert existing Pexels-sourced article photos to AI-generated
+    images via the configured provider (config.json's image_provider/
+    fal_model). Only touches articles currently using photo_url (Pexels) —
+    articles that already have image_path (already AI-generated) are left
+    alone, use --regenerate-image for those individually.
+    `limit` caps how many articles this run touches, applied BEFORE any
+    processing — a predictable, bounded cost regardless of hit rate, since
+    image generation either succeeds or fails cleanly with no complex
+    parsing step that could otherwise inflate real attempts beyond limit."""
+    paths = sorted(CONTENT_DIR.rglob("*.json"))
+    targets = []
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8-sig") as f:
+                a = json.load(f)
+        except Exception:
+            continue
+        if a.get("photo_url"):
+            targets.append((path, a))
+    if not targets:
+        print("No Pexels-sourced articles found. Nothing to regenerate.")
+        return
+    print(f"{len(targets)} article(s) currently use a Pexels photo.")
+    to_process = targets[:limit] if limit else targets
+    print(f"Processing {len(to_process)} of them this run"
+          f"{f' (capped by --image-limit {limit})' if limit else ''}.")
+
+    queries: dict[str, str] = {}
+    CHUNK = 25  # keep each query-generation prompt small and cheap
+    for i in range(0, len(to_process), CHUNK):
+        chunk = to_process[i:i + CHUNK]
+        lines = "\n".join(
+            f'{j}. {a["headline"]} — tags: {", ".join(a.get("tags", []))}'
+            for j, (_, a) in enumerate(chunk)
+        )
+        prompt = f"""For each numbered article below (title in {cfg['language_name']}), write a
+2-4 word GENERIC image topic in English — a concrete scene, action, or object only.
+NEVER a scoreboard, chart, table, ranking list, or anything with readable text/numbers
+in it (image generation cannot render legible text and produces garbled nonsense when
+asked to) — for abstract topics, depict the concrete real-world activity instead.
+NEVER include a real person's name or a specific claimed place; this is for
+illustrative imagery, not a picture of the actual people or event.
+
+Respond with ONLY a JSON object mapping each number to its query string, like:
+{{"0": "beekeeping apiary", "1": "hospital doctor patient"}}
+
+ARTICLES
+{lines}"""
+        try:
+            raw = call_claude(cfg, prompt)
+            text = re.sub(r"^```(?:json)?|```$", "", raw.strip()).strip()
+            start, end = text.find("{"), text.rfind("}")
+            result = json.loads(text[start:end + 1]) if start != -1 else {}
+        except Exception as exc:
+            print(f"  [batch {i}] query generation failed (skipping this batch): {exc}")
+            continue
+        for j, (path, _) in enumerate(chunk):
+            q = result.get(str(j), "")
+            if q:
+                queries[str(path)] = q
+
+    base = cfg["base_url"].rstrip("/") + cfg.get("base_path", "").rstrip("/")
+    done, failed = 0, 0
+    for path, article in to_process:
+        query = queries.get(str(path), "")
+        photo = get_article_photo(cfg, {"image_query": query}, article["slug"]) if query else None
+        if not photo:
+            failed += 1
+            continue
+        article.pop("photo_url", None)
+        article.pop("photo_credit", None)
+        article.pop("photo_credit_url", None)
+        article.update(photo)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(article, f, ensure_ascii=False, indent=2)
+        done += 1
+        print(f"  [image] {article['headline'][:50]} → {query}")
+        REVIEW_BATCH.append({
+            "kind": "image updated", "headline": article["headline"],
+            "summary_short": f"New image query: {query}", "body": "", "quick_facts": [],
+            "source_name": "", "url": f'{base}/{cfg["article_prefix"]}/{article["slug"]}/',
+        })
+    print(f"Done. {done} regenerated, {failed} failed (left with their previous photo).")
+
+
 def recently_ran(hours: float = 2.0) -> bool:
     """True if a publishing run completed within the cooldown window, judged by the
     last_run timestamp stored INSIDE seen.json — never by file modification times.
@@ -1545,6 +1631,10 @@ def main() -> None:
                      help="one-off: add real Pexels photos to existing articles that don't have one")
     ap.add_argument("--regenerate-image", type=str, default=None, metavar="SLUG",
                      help="one-off: regenerate the image for one specific article by slug, overwriting whatever it currently has")
+    ap.add_argument("--regenerate-all-images", action="store_true",
+                     help="one-off: bulk-convert existing Pexels photos to AI-generated images (via config.json's image_provider)")
+    ap.add_argument("--image-limit", type=int, default=None,
+                     help="cap how many articles --regenerate-all-images processes in one run — leave unset to process all of them")
     ap.add_argument("--recover", action="store_true",
                      help="one-time: sweep the last 72h ignoring the seen-list to recover stranded stories")
     ap.add_argument("--list-candidates", action="store_true",
@@ -1576,6 +1666,10 @@ def main() -> None:
         return
     if args.regenerate_image:
         regenerate_image(cfg, args.regenerate_image)
+        write_pr_description()
+        return
+    if args.regenerate_all_images:
+        regenerate_all_images(cfg, limit=args.image_limit)
         write_pr_description()
         return
     if args.rewrite_articles:
