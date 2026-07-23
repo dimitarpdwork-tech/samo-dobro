@@ -42,16 +42,38 @@
   "cities_path": "gradove",
   "digest_path": "dnes",
   "known_cities": {
-    "sofiya": "София", "plovdiv": "Пловдив", "varna": "Варна", "burgas": "Бургас",
-    "ruse": "Русе", "stara-zagora": "Стара Загора", "pleven": "Плевен", "sliven": "Сливен",
-    "dobrich": "Добрич", "shumen": "Шумен", "pernik": "Перник", "haskovo": "Хасково",
-    "yambol": "Ямбол", "pazardzhik": "Пазарджик", "blagoevgrad": "Благоевград",
-    "veliko-tarnovo": "Велико Търново", "vratsa": "Враца", "gabrovo": "Габрово",
-    "vidin": "Видин", "kazanlak": "Казанлък", "kyustendil": "Кюстендил",
-    "montana": "Монтана", "targovishte": "Търговище", "lovech": "Ловеч",
-    "silistra": "Силистра", "razgrad": "Разград", "smolyan": "Смолян",
-    "gorna-oryahovitsa": "Горна Оряховица", "asenovgrad": "Асеновград",
-    "dimitrovgrad": "Димитровград", "samokov": "Самоков", "petrich": "Петрич"
+    "sofiya": "София",
+    "plovdiv": "Пловдив",
+    "varna": "Варна",
+    "burgas": "Бургас",
+    "ruse": "Русе",
+    "stara-zagora": "Стара Загора",
+    "pleven": "Плевен",
+    "sliven": "Сливен",
+    "dobrich": "Добрич",
+    "shumen": "Шумен",
+    "pernik": "Перник",
+    "haskovo": "Хасково",
+    "yambol": "Ямбол",
+    "pazardzhik": "Пазарджик",
+    "blagoevgrad": "Благоевград",
+    "veliko-tarnovo": "Велико Търново",
+    "vratsa": "Враца",
+    "gabrovo": "Габрово",
+    "vidin": "Видин",
+    "kazanlak": "Казанлък",
+    "kyustendil": "Кюстендил",
+    "montana": "Монтана",
+    "targovishte": "Търговище",
+    "lovech": "Ловеч",
+    "silistra": "Силистра",
+    "razgrad": "Разград",
+    "smolyan": "Смолян",
+    "gorna-oryahovitsa": "Горна Оряховица",
+    "asenovgrad": "Асеновград",
+    "dimitrovgrad": "Димитровград",
+    "samokov": "Самоков",
+    "petrich": "Петрич"
   },
   "same_as": [],
   "byline_name": "AI редакция на Добро Дело",
@@ -66,8 +88,16 @@
     "body": "'Sofia Sans', system-ui, sans-serif",
     "label": "'Sofia Sans Condensed', system-ui, sans-serif",
     "faces": [
-      { "family": "Sofia Sans", "weight": "400", "file": "sofia-sans-v20-cyrillic_latin-regular.woff2" },
-      { "family": "Sofia Sans Condensed", "weight": "400", "file": "sofia-sans-condensed-v6-cyrillic_latin-regular.woff2" }
+      {
+        "family": "Sofia Sans",
+        "weight": "400",
+        "file": "sofia-sans-v20-cyrillic_latin-regular.woff2"
+      },
+      {
+        "family": "Sofia Sans Condensed",
+        "weight": "400",
+        "file": "sofia-sans-condensed-v6-cyrillic_latin-regular.woff2"
+      }
     ]
   },
   "colors": {
@@ -127,24 +157,384 @@
     "photo_by": "Снимка:"
   },
   "categories": {
-    "obshtestvo": { "label": "Общество", "emoji": "🤝", "c1": "#FFB703", "c2": "#FFD166", "intro": "Истории за хора, общности и институции в България, които избират да помагат, да се грижат и да градят нещо по-добро — от граждани с добри идеи до реформи, които правят живота по-лек." },
-    "priroda": { "label": "Природа", "emoji": "🌿", "c1": "#57A773", "c2": "#9BD4A9", "intro": "Добри новини за българската природа: завръщащи се видове, опазени гори и паркове, и хората, които работят тихо, за да остане страната зелена." },
-    "zdrave": { "label": "Здраве", "emoji": "❤️", "c1": "#E2547E", "c2": "#F5A3BC", "intro": "Напредък в здравеопазването, инициативи за по-добър достъп до грижа и истории на хора, които правят здравето на другите своя мисия." },
-    "nauka": { "label": "Наука", "emoji": "🔭", "c1": "#3A86C8", "c2": "#8FC3E8", "intro": "Постижения на българската наука и технологии — открития, признания и хора, които бутат границите на познанието напред." },
-    "kultura": { "label": "Култура", "emoji": "🎭", "c1": "#9B5DE5", "c2": "#CBA7F0", "intro": "Изкуство, музика, традиции и наследство — начините, по които България пази и празнува своята култура всеки ден." },
-    "sport": { "label": "Спорт", "emoji": "⚽", "c1": "#F3722C", "c2": "#F9A26C", "intro": "Успехи на български спортисти и отбори, моменти на воля и постижение, които карат цялата страна да се гордее." },
-    "ikonomika": { "label": "Икономика", "emoji": "🌾", "c1": "#0FA3A3", "c2": "#7ED4D4", "intro": "Добри новини за българската икономика — растеж, иновации и примери, че бизнесът може да бъде и отговорен." }
+    "obshtestvo": {
+      "label": "Общество",
+      "emoji": "🤝",
+      "c1": "#FFB703",
+      "c2": "#FFD166",
+      "intro": "Истории за хора, общности и институции в България, които избират да помагат, да се грижат и да градят нещо по-добро — от граждани с добри идеи до реформи, които правят живота по-лек."
+    },
+    "priroda": {
+      "label": "Природа",
+      "emoji": "🌿",
+      "c1": "#57A773",
+      "c2": "#9BD4A9",
+      "intro": "Добри новини за българската природа: завръщащи се видове, опазени гори и паркове, и хората, които работят тихо, за да остане страната зелена."
+    },
+    "zdrave": {
+      "label": "Здраве",
+      "emoji": "❤️",
+      "c1": "#E2547E",
+      "c2": "#F5A3BC",
+      "intro": "Напредък в здравеопазването, инициативи за по-добър достъп до грижа и истории на хора, които правят здравето на другите своя мисия."
+    },
+    "nauka": {
+      "label": "Наука",
+      "emoji": "🔭",
+      "c1": "#3A86C8",
+      "c2": "#8FC3E8",
+      "intro": "Постижения на българската наука и технологии — открития, признания и хора, които бутат границите на познанието напред."
+    },
+    "kultura": {
+      "label": "Култура",
+      "emoji": "🎭",
+      "c1": "#9B5DE5",
+      "c2": "#CBA7F0",
+      "intro": "Изкуство, музика, традиции и наследство — начините, по които България пази и празнува своята култура всеки ден."
+    },
+    "sport": {
+      "label": "Спорт",
+      "emoji": "⚽",
+      "c1": "#F3722C",
+      "c2": "#F9A26C",
+      "intro": "Успехи на български спортисти и отбори, моменти на воля и постижение, които карат цялата страна да се гордее."
+    },
+    "ikonomika": {
+      "label": "Икономика",
+      "emoji": "🌾",
+      "c1": "#0FA3A3",
+      "c2": "#7ED4D4",
+      "intro": "Добри новини за българската икономика — растеж, иновации и примери, че бизнесът може да бъде и отговорен."
+    }
   },
   "feeds": [
-    { "name": "БТА", "url": "https://www.bta.bg/bg/rss/free" },
-    { "name": "Дневник", "url": "https://www.dnevnik.bg/rss/" },
-    { "name": "Actualno", "url": "https://www.actualno.com/rss/novini-new" },
-    { "name": "24 часа", "url": "https://www.24chasa.bg/rss" },
-    { "name": "Добри новини", "url": "https://dobrinovini.com/feed/" },
-    { "name": "Народно събрание", "url": "https://www.parliament.bg/feed/news" },
-    { "name": "Министерски съвет", "type": "scrape",
-      "url": "https://gov.bg/en/Press-center/News", "link_pattern": "/Press-center/News/" },
-    { "name": "БНР — Живот", "type": "scrape",
-      "url": "https://bnrnews.bg/en/list/life", "link_pattern": "/en/post/" }
+    {
+      "name": "БТА",
+      "url": "https://www.bta.bg/bg/rss/free"
+    },
+    {
+      "name": "Дневник",
+      "url": "https://www.dnevnik.bg/rss/"
+    },
+    {
+      "name": "Actualno",
+      "url": "https://www.actualno.com/rss/novini-new"
+    },
+    {
+      "name": "24 часа",
+      "url": "https://www.24chasa.bg/rss"
+    },
+    {
+      "name": "Добри новини",
+      "url": "https://dobrinovini.com/feed/"
+    },
+    {
+      "name": "Народно събрание",
+      "url": "https://www.parliament.bg/feed/news"
+    },
+    {
+      "name": "Министерски съвет",
+      "type": "scrape",
+      "url": "https://gov.bg/en/Press-center/News",
+      "link_pattern": "/Press-center/News/"
+    },
+    {
+      "name": "БНР — Живот",
+      "type": "scrape",
+      "url": "https://bnrnews.bg/en/list/life",
+      "link_pattern": "/en/post/"
+    },
+    {
+      "name": "Община Антон",
+      "url": "https://antonbg.eu/feed/"
+    },
+    {
+      "name": "Община Антоново",
+      "url": "https://antonovo.bg/?feed=rss2"
+    },
+    {
+      "name": "Община Баните",
+      "url": "https://visitbanite.bg/feed/"
+    },
+    {
+      "name": "Община Банско",
+      "url": "https://bansko.bg/feed/"
+    },
+    {
+      "name": "Община Белене",
+      "url": "https://belene.bg/feed/"
+    },
+    {
+      "name": "Община Белица",
+      "url": "https://obshtinabelitsa.com/?format=feed&type=rss"
+    },
+    {
+      "name": "Община Белово",
+      "url": "https://belovo.bg/feed/"
+    },
+    {
+      "name": "Община Берковица",
+      "url": "https://www.berkovitsa.bg/feed/"
+    },
+    {
+      "name": "Община Бобошево",
+      "url": "https://obshtina-boboshevo.eu/rss.xml"
+    },
+    {
+      "name": "Община Божурище",
+      "url": "https://www.bozhurishte.bg/feed/"
+    },
+    {
+      "name": "Община Бойница",
+      "url": "https://fakti.bg/feed"
+    },
+    {
+      "name": "Община Болярово",
+      "url": "https://www.bolyarovo.bg/feed/"
+    },
+    {
+      "name": "Община Борован",
+      "url": "https://www.borovan.bg/feed"
+    },
+    {
+      "name": "Община Борово",
+      "url": "https://presstv.bg/feed/"
+    },
+    {
+      "name": "Община Ботевград",
+      "url": "https://botevgrad.start.bg/rss.php"
+    },
+    {
+      "name": "Община Брегово",
+      "url": "https://bregovo.bg/feed"
+    },
+    {
+      "name": "Община Бяла (Варна)",
+      "url": "https://www.vesti.bg/rss"
+    },
+    {
+      "name": "Община Варна",
+      "url": "https://varna.bg/bg/rss"
+    },
+    {
+      "name": "Община Велики Преслав",
+      "url": "https://velikipreslav.bg/wp/feed"
+    },
+    {
+      "name": "Община Велинград",
+      "url": "https://m.velingrad.bg/?feed=rss2"
+    },
+    {
+      "name": "Община Венец",
+      "url": "https://venets.bg/feed/"
+    },
+    {
+      "name": "Община Горна Малина",
+      "url": "https://www.gornamalina.bg/?feed=rss2"
+    },
+    {
+      "name": "Община Грамада",
+      "url": "https://obshtina-gramada.com/bg/feed/"
+    },
+    {
+      "name": "Община Гулянци",
+      "url": "https://gulyantsi.bg/bg/?format=feed&type=rss"
+    },
+    {
+      "name": "Община Гурково",
+      "url": "https://www.gurkovo.bg/feed.xml"
+    },
+    {
+      "name": "Община Девин",
+      "url": "https://www.devin.bg/index.php?format=feed&type=rss"
+    },
+    {
+      "name": "Община Димово",
+      "url": "https://dimovo.bg/feed/"
+    },
+    {
+      "name": "Община Долни чифлик",
+      "url": "https://provaton.bg/feed/"
+    },
+    {
+      "name": "Община Дулово",
+      "url": "https://dulovo.bg/feed/"
+    },
+    {
+      "name": "Община Завет",
+      "url": "https://folkdancegroupzavet.wordpress.com/feed/"
+    },
+    {
+      "name": "Община Златица",
+      "url": "https://zlatitsa.com/feed/"
+    },
+    {
+      "name": "Община Ивайловград",
+      "url": "https://ivaylovgrad.bg/feed/"
+    },
+    {
+      "name": "Община Искър",
+      "url": "https://iskarbg.bg/feed/"
+    },
+    {
+      "name": "Община Ихтиман",
+      "url": "https://ihtiman.bg/?feed=rss2"
+    },
+    {
+      "name": "Община Каолиново",
+      "url": "https://kaolinovo.bg/?feed=rss2"
+    },
+    {
+      "name": "Община Котел",
+      "url": "https://kotel.bg/feed/"
+    },
+    {
+      "name": "Община Кърджали",
+      "url": "https://www.naprednazad.com/feed/"
+    },
+    {
+      "name": "Община Лесичово",
+      "url": "https://www.lesichovo.bg/index.php?format=feed&type=rss"
+    },
+    {
+      "name": "Община Летница",
+      "url": "https://dnes.dir.bg/feeds/rss"
+    },
+    {
+      "name": "Община Лозница",
+      "url": "https://loznitsa.bg/?feed=rss2"
+    },
+    {
+      "name": "Община Макреш",
+      "url": "http://makreshbg.com/feed/"
+    },
+    {
+      "name": "Община Мирково",
+      "url": "https://www.mirkovo.bg/?format=feed&type=rss"
+    },
+    {
+      "name": "Община Мъглиж",
+      "url": "https://maglizh.bg/feed/"
+    },
+    {
+      "name": "Община Неделино",
+      "url": "https://nedelino.bg/feed/"
+    },
+    {
+      "name": "Община Несебър",
+      "url": "https://www.edna.bg/rss"
+    },
+    {
+      "name": "Община Никола Козлево",
+      "url": "https://nov.nikolakozlevo.bg/?feed=rss2"
+    },
+    {
+      "name": "Община Ново село",
+      "url": "https://obshtina-novoselo.com/bg/?feed=rss2"
+    },
+    {
+      "name": "Община Опака",
+      "url": "https://opaka.bg/feed/"
+    },
+    {
+      "name": "Община Перник",
+      "url": "https://pernik.bg/feed/"
+    },
+    {
+      "name": "Община Пещера",
+      "url": "https://www.peshtera.bg/index.php?format=feed&type=rss"
+    },
+    {
+      "name": "Община Поморие",
+      "url": "https://www.pomorie.bg/feed/"
+    },
+    {
+      "name": "Община Попово",
+      "url": "http://popovo.bg/bg/index.php?format=feed&type=rss"
+    },
+    {
+      "name": "Община Приморско",
+      "url": "https://primorsko.bg/feed/"
+    },
+    {
+      "name": "Община Разград",
+      "url": "https://razgrad.bg/?format=feed&type=rss"
+    },
+    {
+      "name": "Община Ружинци",
+      "url": "http://obshtina-ruzhintsi.com/feed/"
+    },
+    {
+      "name": "Община Садово",
+      "url": "https://sadovo.bg/feed/"
+    },
+    {
+      "name": "Община Своге",
+      "url": "https://www.svoge.bg/?feed=rss2"
+    },
+    {
+      "name": "Община Септември",
+      "url": "https://www.24chasa.bg/rss"
+    },
+    {
+      "name": "Община Симитли",
+      "url": "https://simitli.bg/index.php?format=feed&type=rss&lang=bg"
+    },
+    {
+      "name": "Община Смолян",
+      "url": "https://www.peika.bg/_l.Services::Rss_a.articles.html?exml=1"
+    },
+    {
+      "name": "Община Сопот",
+      "url": "http://www.sopot-municipality.com/joomla/index.php?format=feed&type=rss"
+    },
+    {
+      "name": "Община Стралджа",
+      "url": "https://straldzha.bg/feed/"
+    },
+    {
+      "name": "Община Стрелча",
+      "url": "https://strelcha.bg/?feed=rss2"
+    },
+    {
+      "name": "Община Тетевен",
+      "url": "http://www.teteven.bg/index.php?format=feed&type=rss"
+    },
+    {
+      "name": "Община Тополовград",
+      "url": "https://topolovgrad.bg/feed/"
+    },
+    {
+      "name": "Община Трекляно",
+      "url": "https://liternet.bg/publisher/rss"
+    },
+    {
+      "name": "Община Трявна",
+      "url": "https://tryavna.bg/feed/"
+    },
+    {
+      "name": "Община Челопеч",
+      "url": "https://www.dnevnik.bg/rss/"
+    },
+    {
+      "name": "Община Черноочене",
+      "url": "https://chernoochene.com/?feed=rss2"
+    },
+    {
+      "name": "Община Чирпан",
+      "url": "https://midalidare.bg/rss_feed/view/1"
+    },
+    {
+      "name": "Община Шабла",
+      "url": "https://shabla.bg/feed/"
+    },
+    {
+      "name": "Община Якимово",
+      "url": "http://www.iakimovo.org/index.php?format=feed&type=rss"
+    },
+    {
+      "name": "Община Якоруда",
+      "url": "https://yakoruda.bg/feed/"
+    }
   ]
 }
