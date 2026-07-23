@@ -871,9 +871,15 @@ def check_feeds(cfg: dict) -> None:
 def backfill_photos(cfg: dict) -> None:
     """One-off: find every existing article with no photo, generate a proper
     per-article (not just per-category) English search topic for each via a
-    single batched Claude call, then fetch a real Pexels photo for each.
-    Safe to re-run — anything that already has a photo is skipped."""
-    if not (os.environ.get("PEXELS_API_KEY") or cfg.get("pexels_api_key")):
+    single batched Claude call, then fetch a photo via whichever provider
+    config.json selects. Safe to re-run — anything that already has a photo
+    is skipped."""
+    has_pexels = os.environ.get("PEXELS_API_KEY") or cfg.get("pexels_api_key")
+    has_fal = os.environ.get("FAL_API_KEY")
+    if cfg.get("image_provider") == "fal" and not has_fal:
+        print("image_provider is 'fal' but no FAL_API_KEY configured — nothing to do.")
+        return
+    if cfg.get("image_provider", "pexels") != "fal" and not has_pexels:
         print("No Pexels API key configured (PEXELS_API_KEY env var) — nothing to do.")
         return
     paths = sorted(CONTENT_DIR.rglob("*.json"))
@@ -884,12 +890,12 @@ def backfill_photos(cfg: dict) -> None:
                 a = json.load(f)
         except Exception:
             continue  # a broken file is build.py's problem, not this script's
-        if not a.get("photo_url"):
+        if not a.get("photo_url") and not a.get("image_path"):
             missing.append((path, a))
     if not missing:
-        print("Every article already has a photo. Nothing to backfill.")
+        print("Every article already has an image. Nothing to backfill.")
         return
-    print(f"{len(missing)} article(s) missing a photo. Generating search topics…")
+    print(f"{len(missing)} article(s) missing an image. Generating search topics…")
 
     queries: dict[str, str] = {}
     CHUNK = 25  # keep each prompt small and cheap
@@ -900,10 +906,12 @@ def backfill_photos(cfg: dict) -> None:
             for j, (_, a) in enumerate(chunk)
         )
         prompt = f"""For each numbered article below (title in {cfg['language_name']}), write a
-2-4 word GENERIC stock-photo search topic in English — describing the general
-subject/scene only (e.g. "beekeeping apiary", "football stadium crowd").
+2-4 word GENERIC image topic in English — a concrete scene, action, or object only.
+NEVER a scoreboard, chart, table, ranking list, or anything with readable text/numbers
+in it (image generation cannot render legible text and produces garbled nonsense when
+asked to) — for abstract topics, depict the concrete real-world activity instead.
 NEVER include a real person's name or a specific claimed place; this is for
-illustrative stock imagery, not a picture of the actual people or event.
+illustrative imagery, not a picture of the actual people or event.
 
 Respond with ONLY a JSON object mapping each number to its query string, like:
 {{"0": "beekeeping apiary", "1": "hospital doctor patient"}}
@@ -926,7 +934,7 @@ ARTICLES
     saved, skipped = 0, 0
     for path, article in missing:
         query = queries.get(str(path), "")
-        photo = find_stock_photo(cfg, query) if query else None
+        photo = get_article_photo(cfg, {"image_query": query}, article["slug"]) if query else None
         if not photo:
             skipped += 1
             continue
@@ -936,6 +944,69 @@ ARTICLES
         saved += 1
         print(f"  [photo] {article['headline'][:60]} → {query}")
     print(f"Done. {saved} article(s) got a photo, {skipped} had no match (kept their SVG art).")
+
+
+def regenerate_image(cfg: dict, slug: str) -> None:
+    """Regenerate the image for ONE specific article, overwriting whatever it
+    currently has (photo_url or image_path) — for exactly this situation:
+    testing whether a prompt/code fix actually changed the outcome for a
+    known-bad image, without waiting for a full new article to be written."""
+    match = None
+    for path in sorted(CONTENT_DIR.rglob("*.json")):
+        try:
+            with open(path, encoding="utf-8-sig") as f:
+                a = json.load(f)
+        except Exception:
+            continue
+        if a.get("slug") == slug:
+            match = (path, a)
+            break
+    if not match:
+        print(f"No article found with slug '{slug}'.")
+        return
+    path, article = match
+
+    print(f"Regenerating image for: {article['headline'][:60]}")
+    prompt = f"""Write a 2-4 word GENERIC image topic in English for this article
+(title in {cfg['language_name']}) — a concrete scene, action, or object only.
+NEVER a scoreboard, chart, table, ranking list, or anything with readable text/numbers
+in it (image generation cannot render legible text and produces garbled nonsense when
+asked to) — for abstract topics, depict the concrete real-world activity instead.
+NEVER include a real person's name or a specific claimed place.
+
+ARTICLE: {article['headline']} — tags: {', '.join(article.get('tags', []))}
+
+Respond with ONLY the 2-4 word query, nothing else."""
+    try:
+        query = call_claude(cfg, prompt, hard_fail=False).strip().strip('"')
+    except Exception as exc:
+        print(f"  query generation failed: {exc}")
+        return
+    if not query:
+        print("  Could not generate a query. Nothing changed.")
+        return
+    print(f"  New image query: {query}")
+
+    photo = get_article_photo(cfg, {"image_query": query}, slug)
+    if not photo:
+        print("  Image generation/lookup failed. Nothing changed.")
+        return
+    article.pop("photo_url", None)
+    article.pop("photo_credit", None)
+    article.pop("photo_credit_url", None)
+    article.pop("image_path", None)
+    article.pop("image_credit", None)
+    article.update(photo)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(article, f, ensure_ascii=False, indent=2)
+    print(f"  Done — new image saved for {slug}")
+    REVIEW_BATCH.append({
+        "kind": "image regenerated", "headline": article["headline"],
+        "summary_short": f"New image query used: {query}",
+        "body": f"Image regenerated for review. Check the 'Files changed' tab for the actual new image.",
+        "quick_facts": [], "source_name": "",
+        "url": f'{cfg["base_url"].rstrip("/")}{cfg.get("base_path", "").rstrip("/")}/{cfg["article_prefix"]}/{slug}/',
+    })
 
 
 def recently_ran(hours: float = 2.0) -> bool:
@@ -1454,6 +1525,8 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=None, help="max new stories this run")
     ap.add_argument("--backfill-photos", action="store_true",
                      help="one-off: add real Pexels photos to existing articles that don't have one")
+    ap.add_argument("--regenerate-image", type=str, default=None, metavar="SLUG",
+                     help="one-off: regenerate the image for one specific article by slug, overwriting whatever it currently has")
     ap.add_argument("--recover", action="store_true",
                      help="one-time: sweep the last 72h ignoring the seen-list to recover stranded stories")
     ap.add_argument("--list-candidates", action="store_true",
@@ -1482,6 +1555,10 @@ def main() -> None:
         return
     if args.backfill_photos:
         backfill_photos(cfg)
+        return
+    if args.regenerate_image:
+        regenerate_image(cfg, args.regenerate_image)
+        write_pr_description()
         return
     if args.rewrite_articles:
         rewrite_articles(cfg, limit=args.rewrite_limit, force=args.rewrite_force)
