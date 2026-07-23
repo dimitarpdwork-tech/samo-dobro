@@ -215,16 +215,8 @@
       "url": "https://www.bta.bg/bg/rss/free"
     },
     {
-      "name": "Дневник",
-      "url": "https://www.dnevnik.bg/rss/"
-    },
-    {
       "name": "Actualno",
       "url": "https://www.actualno.com/rss/novini-new"
-    },
-    {
-      "name": "24 часа",
-      "url": "https://www.24chasa.bg/rss"
     },
     {
       "name": "Добри новини",
@@ -391,16 +383,8 @@
       "url": "https://kotel.bg/feed/"
     },
     {
-      "name": "Община Кърджали",
-      "url": "https://www.naprednazad.com/feed/"
-    },
-    {
       "name": "Община Лесичово",
       "url": "https://www.lesichovo.bg/index.php?format=feed&type=rss"
-    },
-    {
-      "name": "Община Летница",
-      "url": "https://dnes.dir.bg/feeds/rss"
     },
     {
       "name": "Община Лозница",
@@ -421,10 +405,6 @@
     {
       "name": "Община Неделино",
       "url": "https://nedelino.bg/feed/"
-    },
-    {
-      "name": "Община Несебър",
-      "url": "https://www.edna.bg/rss"
     },
     {
       "name": "Община Никола Козлево",
@@ -475,10 +455,6 @@
       "url": "https://www.svoge.bg/?feed=rss2"
     },
     {
-      "name": "Община Септември",
-      "url": "https://www.24chasa.bg/rss"
-    },
-    {
       "name": "Община Симитли",
       "url": "https://simitli.bg/index.php?format=feed&type=rss&lang=bg"
     },
@@ -507,16 +483,8 @@
       "url": "https://topolovgrad.bg/feed/"
     },
     {
-      "name": "Община Трекляно",
-      "url": "https://liternet.bg/publisher/rss"
-    },
-    {
       "name": "Община Трявна",
       "url": "https://tryavna.bg/feed/"
-    },
-    {
-      "name": "Община Челопеч",
-      "url": "https://www.dnevnik.bg/rss/"
     },
     {
       "name": "Община Черноочене",
@@ -537,6 +505,14 @@
     {
       "name": "Община Якоруда",
       "url": "https://yakoruda.bg/feed/"
+    },
+    {
+      "name": "24 часа",
+      "url": "https://www.24chasa.bg/rss"
+    },
+    {
+      "name": "Дневник",
+      "url": "https://www.dnevnik.bg/rss/"
     }
   ]
 }
