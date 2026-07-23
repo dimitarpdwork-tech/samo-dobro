@@ -636,11 +636,99 @@ def clip(value: str, limit: int) -> str:
     return value if len(value) <= limit else value[: limit - 1].rstrip() + "…"
 
 
+def generate_article_image(cfg: dict, prompt: str, out_path: Path) -> dict | None:
+    """Generate an editorial illustration via FLUX.1 [schnell] on fal.ai, and
+    save it locally as WebP (never hotlinked — this repo is public, and a
+    hotlinked third-party image is also a dependency you don't control).
+    Returns None (silently) on ANY failure — a missing image should never
+    break a publish run, same principle as find_stock_photo().
+
+    Verified directly against fal.ai's own API docs before writing this:
+    - Auth: `Authorization: Key {FAL_API_KEY}` header (the literal word
+      "Key", not "Bearer")
+    - Endpoint: POST https://fal.run/fal-ai/flux/schnell (synchronous —
+      appropriate here since Schnell is sub-second; slower models would
+      need the async queue pattern instead)
+    - image_size as a custom {"width","height"} object is supported
+      alongside preset enum strings
+    - Response: {"images": [{"url", "width", "height", "content_type"}], ...}
+      — fal returns a URL to download, not the raw image bytes, so this is
+      a two-step fetch: generate, then download.
+    Pricing: $0.003/megapixel, billed rounded up to the next whole
+    megapixel — 1200x675 is ~0.81MP, so this stays at the cheapest tier.
+    """
+    api_key = os.environ.get("FAL_API_KEY")
+    if not api_key or not prompt:
+        return None
+    try:
+        import io
+        try:
+            from PIL import Image
+        except ImportError:
+            print("  [image-gen] Pillow not installed — add 'Pillow' to requirements.txt")
+            return None
+
+        resp = requests.post(
+            "https://fal.run/fal-ai/flux/schnell",
+            headers={"Authorization": f"Key {api_key}", "Content-Type": "application/json"},
+            json={
+                "prompt": prompt,
+                "image_size": {"width": 1200, "height": 675},  # 16:9, stays under 1MP billing tier
+                "num_images": 1,
+                "output_format": "jpeg",
+            },
+            timeout=60,
+        )
+        resp.raise_for_status()
+        images = resp.json().get("images") or []
+        if not images:
+            return None
+        image_url = images[0]["url"]
+
+        img_resp = requests.get(image_url, timeout=30)
+        img_resp.raise_for_status()
+
+        img = Image.open(io.BytesIO(img_resp.content)).convert("RGB")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        img.save(out_path, "WEBP", quality=84, method=6)
+        return {"width": images[0].get("width"), "height": images[0].get("height")}
+    except Exception as exc:
+        print(f"  [image-gen] failed (non-fatal, article publishes without an image): {exc}")
+        return None
+
+
+def get_article_photo(cfg: dict, written: dict, slug: str) -> dict | None:
+    """Dispatches to whichever image provider config.json selects.
+    Defaults to Pexels (existing behavior, completely unchanged) unless
+    image_provider is explicitly set to 'fal'. Falls back to Pexels if FLUX
+    generation fails and fallback_to_pexels isn't disabled — matches the
+    cautious rollout both source documents recommended: don't commit to the
+    new provider fully until it's proven out."""
+    provider = cfg.get("image_provider", "pexels")
+    if provider == "fal":
+        out_path = ROOT / "assets" / "articles" / f"{slug}.webp"
+        result = generate_article_image(cfg, written.get("image_query", ""), out_path)
+        if result:
+            return {
+                "image_path": f"/assets/articles/{slug}.webp",
+                "image_credit": "AI-generated illustration",
+            }
+        if not cfg.get("fallback_to_pexels", True):
+            return None
+        print("  [image-gen] falling back to Pexels for this article")
+    return find_stock_photo(cfg, written.get("image_query", ""))
+
+
 def find_stock_photo(cfg: dict, query: str) -> dict | None:
     """Look up a genuinely-licensed, generic topical stock photo via Pexels.
     Returns None (silently) if no key is configured, the query is empty, or the
-    lookup fails for any reason — a missing photo should never break a publish run."""
-    key = cfg.get("pexels_api_key", "")
+    lookup fails for any reason — a missing photo should never break a publish run.
+    Key comes from the PEXELS_API_KEY environment variable (a GitHub Actions
+    secret), not config.json — this file is committed to a public repo, and a
+    real API key was previously sitting there in plaintext. cfg['pexels_api_key']
+    is still checked as a fallback for local/manual runs, but should be empty
+    in the committed file from now on."""
+    key = os.environ.get("PEXELS_API_KEY") or cfg.get("pexels_api_key", "")
     if not key or not query:
         return None
     try:
@@ -761,8 +849,8 @@ def backfill_photos(cfg: dict) -> None:
     per-article (not just per-category) English search topic for each via a
     single batched Claude call, then fetch a real Pexels photo for each.
     Safe to re-run — anything that already has a photo is skipped."""
-    if not cfg.get("pexels_api_key"):
-        print("No pexels_api_key configured — nothing to do.")
+    if not (os.environ.get("PEXELS_API_KEY") or cfg.get("pexels_api_key")):
+        print("No Pexels API key configured (PEXELS_API_KEY env var) — nothing to do.")
         return
     paths = sorted(CONTENT_DIR.rglob("*.json"))
     missing = []
@@ -905,7 +993,7 @@ def save_one_written(cfg: dict, written: dict, cand: dict, seen: dict) -> str | 
         "source_name": cand["source"], "source_url": cand["link"],
         "published": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "lang": cfg["lang"],
     }
-    photo = find_stock_photo(cfg, written.get("image_query", ""))
+    photo = get_article_photo(cfg, written, slug)
     if photo:
         article.update(photo)
     out_dir = CONTENT_DIR / now.strftime("%Y") / now.strftime("%m")
@@ -1238,7 +1326,7 @@ def save_guide(cfg: dict, written: dict, category_id: str) -> str | None:
         "lang": cfg["lang"],
         "pillar": True,
     }
-    photo = find_stock_photo(cfg, written.get("image_query", ""))
+    photo = get_article_photo(cfg, written, slug)
     if photo:
         article.update(photo)
     out_dir = CONTENT_DIR / now.strftime("%Y") / now.strftime("%m")
