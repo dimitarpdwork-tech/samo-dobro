@@ -442,7 +442,11 @@ Respond using EXACTLY this plain-text format — nothing before or after it. Do 
 ===TAGS===
 <tag one, tag two, tag three — include the city tag here if applicable, per above>
 ===IMAGE_QUERY===
-<2-4 words English, generic scene for stock photo, never a real person's name>
+<2-4 words English, a concrete scene, action, or object — NEVER a scoreboard, chart, table, ranking list, or
+anything with readable text/numbers in it (image generation cannot render legible text and produces garbled
+nonsense when asked to). For abstract topics (rankings, statistics, policy), depict the concrete activity or
+setting instead — e.g. for a tennis rankings article, "tennis player serving court" not "tennis ranking board".
+Never a real person's name or a specific claimed location.>
 ===END==="""
 
 
@@ -674,6 +678,12 @@ def generate_article_image(cfg: dict, prompt: str, out_path: Path) -> dict | Non
     api_key = os.environ.get("FAL_API_KEY")
     if not api_key or not prompt:
         return None
+    # Defense-in-depth, not reliant solely on the model following instructions:
+    # append a standing negative constraint to every generation prompt. Image
+    # models cannot render legible text/numbers — asking for one anyway (a
+    # scoreboard, chart, table) reliably produces garbled nonsense, as seen
+    # directly on the ATP/WTA rankings guide's image.
+    full_prompt = f"{prompt}, no text, no numbers, no scoreboard, no charts, no tables, no UI elements"
     try:
         import io
         try:
@@ -686,7 +696,7 @@ def generate_article_image(cfg: dict, prompt: str, out_path: Path) -> dict | Non
             "https://fal.run/fal-ai/flux/schnell",
             headers={"Authorization": f"Key {api_key}", "Content-Type": "application/json"},
             json={
-                "prompt": prompt,
+                "prompt": full_prompt,
                 "image_size": {"width": 1200, "height": 675},  # 16:9, stays under 1MP billing tier
                 "num_images": 1,
                 "output_format": "jpeg",
@@ -1304,7 +1314,7 @@ Respond with ONLY a JSON object, nothing else:
   "body": "<the full guide, paragraphs/headings separated by \\n\\n, per the structure above>",
   "quick_facts": ["<3-5 short standalone facts, in {cfg['language_name']}>"],
   "tags": ["<4-6 lowercase tags, no spaces, in {cfg['language_name']}>"],
-  "image_query": "<2-4 words English, a GENERIC topic/scene for stock photo search matching this guide's overall subject — e.g. 'mountain forest hiking' or 'hospital doctor patient'. Never a real person's name or a specific claimed location.>"
+  "image_query": "<2-4 words English, a concrete scene, action, or object matching this guide's overall subject — e.g. 'mountain forest hiking' or 'hospital doctor patient'. NEVER a scoreboard, chart, table, ranking list, diagram, or anything with readable text/numbers in it (image generation cannot render legible text and produces garbled nonsense when asked to). For abstract/explainer topics — rankings, statistics, how a system works — depict the concrete real-world activity or setting instead, never the abstraction itself. Never a real person's name or a specific claimed location.>"
 }}"""
 
 
