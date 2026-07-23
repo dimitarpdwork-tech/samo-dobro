@@ -109,14 +109,17 @@ jobs:
             git checkout -b "$BRANCH"
             git commit -m "Rewrite pass $(date -u +'%Y-%m-%d %H:%M') — pending review"
             git push origin "$BRANCH"
+            PR_URL="https://github.com/${{ github.repository }}/pull/new/$BRANCH"
             if [ -f pr_description.md ]; then
               gh pr create --base main --head "$BRANCH" \
                 --title "Review: rewritten articles — $(date -u +'%Y-%m-%d %H:%M')" \
-                --body-file pr_description.md
+                --body-file pr_description.md \
+                || echo "Could not auto-create the PR (often a repo setting — Settings > Actions > General > Workflow permissions > allow PR creation). The branch and commit are safe regardless — open this URL to create the PR manually: $PR_URL"
             else
               gh pr create --base main --head "$BRANCH" \
                 --title "Review: rewritten articles — $(date -u +'%Y-%m-%d %H:%M')" \
-                --body "Rewritten articles ready for review — see Files changed."
+                --body "Rewritten articles ready for review — see Files changed." \
+                || echo "Could not auto-create the PR — open this URL to create it manually: $PR_URL"
             fi
             git checkout main
           fi
@@ -144,14 +147,17 @@ jobs:
             git checkout -b "$BRANCH"
             git commit -m "Recovered stories $(date -u +'%Y-%m-%d %H:%M') — pending review"
             git push origin "$BRANCH"
+            PR_URL="https://github.com/${{ github.repository }}/pull/new/$BRANCH"
             if [ -f pr_description.md ]; then
               gh pr create --base main --head "$BRANCH" \
                 --title "Review: recovered stories — $(date -u +'%Y-%m-%d %H:%M')" \
-                --body-file pr_description.md
+                --body-file pr_description.md \
+                || echo "Could not auto-create the PR (often a repo setting — Settings > Actions > General > Workflow permissions > allow PR creation). The branch and commit are safe regardless — open this URL to create the PR manually: $PR_URL"
             else
               gh pr create --base main --head "$BRANCH" \
                 --title "Review: recovered stories — $(date -u +'%Y-%m-%d %H:%M')" \
-                --body "Recovered stories ready for review — see Files changed."
+                --body "Recovered stories ready for review — see Files changed." \
+                || echo "Could not auto-create the PR — open this URL to create it manually: $PR_URL"
             fi
             git checkout main
           fi
@@ -180,14 +186,17 @@ jobs:
             git checkout -b "$BRANCH"
             git commit -m "New guide article $(date -u +'%Y-%m-%d %H:%M') — pending review"
             git push origin "$BRANCH"
+            PR_URL="https://github.com/${{ github.repository }}/pull/new/$BRANCH"
             if [ -f pr_description.md ]; then
               gh pr create --base main --head "$BRANCH" \
                 --title "Review: new guide article — $(date -u +'%Y-%m-%d %H:%M')" \
-                --body-file pr_description.md
+                --body-file pr_description.md \
+                || echo "Could not auto-create the PR (often a repo setting — Settings > Actions > General > Workflow permissions > allow PR creation). The branch and commit are safe regardless — open this URL to create the PR manually: $PR_URL"
             else
               gh pr create --base main --head "$BRANCH" \
                 --title "Review: new guide article — $(date -u +'%Y-%m-%d %H:%M')" \
-                --body "New guide ready for review — see Files changed."
+                --body "New guide ready for review — see Files changed." \
+                || echo "Could not auto-create the PR — open this URL to create it manually: $PR_URL"
             fi
             git checkout main
           fi
@@ -231,14 +240,17 @@ jobs:
             git checkout -b "$BRANCH"
             git commit -m "New good news $(date -u +'%Y-%m-%d %H:%M') — pending review"
             git push origin "$BRANCH"
+            PR_URL="https://github.com/${{ github.repository }}/pull/new/$BRANCH"
             if [ -f pr_description.md ]; then
               gh pr create --base main --head "$BRANCH" \
                 --title "Review: daily good news — $(date -u +'%Y-%m-%d %H:%M')" \
-                --body-file pr_description.md
+                --body-file pr_description.md \
+                || echo "Could not auto-create the PR (often a repo setting — Settings > Actions > General > Workflow permissions > allow PR creation). The branch and commit are safe regardless — open this URL to create the PR manually: $PR_URL"
             else
               gh pr create --base main --head "$BRANCH" \
                 --title "Review: daily good news — $(date -u +'%Y-%m-%d %H:%M')" \
-                --body "New articles ready for review — see Files changed."
+                --body "New articles ready for review — see Files changed." \
+                || echo "Could not auto-create the PR — open this URL to create it manually: $PR_URL"
             fi
             git checkout main
           fi
