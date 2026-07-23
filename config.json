@@ -16,7 +16,9 @@
   "ga4_measurement_id": "G-2VMV8DMTLD",
   "adsense_client_id": "",
   "indexnow_key": "e77c9341d37259529c6d283e30522ec0",
-  "pexels_api_key": "0K3ocnBPdGV0c6qNkOmmxvLiYaxg0pnFDIDSe1irWksXOKZ8gvqH0x2b",
+  "pexels_api_key": "",
+  "image_provider": "pexels",
+  "fallback_to_pexels": true,
   "founding_date": "2026-07-01",
   "tag_aliases": {
     "sofia": "sofiya",
