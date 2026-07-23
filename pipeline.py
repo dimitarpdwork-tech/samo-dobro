@@ -42,6 +42,15 @@ except ImportError:
 ROOT = Path(__file__).resolve().parent
 CONTENT_DIR = ROOT / "content" / "articles"
 SEEN_FILE = ROOT / "content" / "seen.json"
+PR_DESCRIPTION_FILE = ROOT / "pr_description.md"
+
+# Every article successfully created/changed in this run, for the human-review
+# PR description written at the end of main(). A module-level list rather than
+# threaded through every save function's signature — this is a single-process
+# CLI script run once per invocation, not a library, so this is simpler and
+# safer than passing a mutable accumulator through run_two_phase/
+# rewrite_articles/generate_guides and every function they call.
+REVIEW_BATCH: list[dict] = []
 API_URL = "https://api.anthropic.com/v1/messages"
 API_VERSION = "2023-06-01"
 USER_AGENT = "GoodNewsBot/1.0 (+https://github.com/; polite RSS reader)"
@@ -905,7 +914,13 @@ def save_one_written(cfg: dict, written: dict, cand: dict, seen: dict) -> str | 
         json.dump(article, f, ensure_ascii=False, indent=2)
     seen["ids"].append(cand["id"])
     base = cfg["base_url"].rstrip("/") + cfg.get("base_path", "").rstrip("/")
-    return f'{base}/{cfg["article_prefix"]}/{slug}/'
+    url = f'{base}/{cfg["article_prefix"]}/{slug}/'
+    REVIEW_BATCH.append({
+        "kind": "new", "headline": headline, "summary_short": article["summary_short"],
+        "body": body, "quick_facts": article["quick_facts"],
+        "source_name": article["source_name"], "url": url,
+    })
+    return url
 
 
 def run_two_phase(cfg: dict, candidates: list[dict], seen: dict, max_new: int) -> tuple[int, list[str]]:
@@ -1046,6 +1061,12 @@ def rewrite_articles(cfg: dict, limit: int | None = None, force: bool = False) -
             json.dump(art, f, ensure_ascii=False, indent=2)
         done += 1
         print(f"  [rewritten] {art['headline'][:55]}")
+        base = cfg["base_url"].rstrip("/") + cfg.get("base_path", "").rstrip("/")
+        REVIEW_BATCH.append({
+            "kind": "rewritten", "headline": art["headline"], "summary_short": art["summary_short"],
+            "body": art["body"], "quick_facts": art.get("quick_facts", []),
+            "source_name": art.get("source_name", ""), "url": f'{base}/{cfg["article_prefix"]}/{art["slug"]}/',
+        })
 
     print(f"\nRewrite complete. {attempted} paid API call(s) made, {done} rewritten successfully, "
           f"{parse_failed} of those calls failed to parse (paid, but left untouched), "
@@ -1224,6 +1245,12 @@ def save_guide(cfg: dict, written: dict, category_id: str) -> str | None:
     out_dir.mkdir(parents=True, exist_ok=True)
     with open(out_dir / f"{slug}.json", "w", encoding="utf-8") as f:
         json.dump(article, f, ensure_ascii=False, indent=2)
+    base = cfg["base_url"].rstrip("/") + cfg.get("base_path", "").rstrip("/")
+    REVIEW_BATCH.append({
+        "kind": "guide", "headline": headline, "summary_short": article["summary_short"],
+        "body": body, "quick_facts": article["quick_facts"],
+        "source_name": "", "url": f'{base}/{cfg["article_prefix"]}/{slug}/',
+    })
     return slug
 
 
@@ -1282,6 +1309,32 @@ def generate_guides(cfg: dict, count: int, category_override: str | None = None)
             time.sleep(5)  # brief pause between calls
 
 
+def write_pr_description() -> bool:
+    """Write a clean, readable markdown summary of everything in REVIEW_BATCH
+    for the review-PR description — this is what a human reads to approve or
+    reject a batch, so it needs to read like a document, not a JSON diff.
+    Returns True if anything was written (i.e., there's something to actually
+    open a review PR for)."""
+    if not REVIEW_BATCH:
+        return False
+    kind_label = {"new": "New article", "rewritten": "Rewritten article", "guide": "New evergreen guide"}
+    lines = [f"# {len(REVIEW_BATCH)} item(s) ready for review\n"]
+    for i, item in enumerate(REVIEW_BATCH, 1):
+        label = kind_label.get(item["kind"], "Item")
+        lines.append(f"## {i}. [{label}] {item['headline']}")
+        if item.get("source_name"):
+            lines.append(f"**Source:** {item['source_name']}\n")
+        lines.append(item["body"])
+        if item.get("quick_facts"):
+            lines.append("\n**Quick facts:**")
+            for f in item["quick_facts"]:
+                lines.append(f"- {f}")
+        lines.append(f"\n*Will be live at:* {item['url']}\n")
+        lines.append("---\n")
+    PR_DESCRIPTION_FILE.write_text("\n".join(lines), encoding="utf-8")
+    return True
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Good-news pipeline")
     ap.add_argument("--check-feeds", action="store_true")
@@ -1320,9 +1373,11 @@ def main() -> None:
         return
     if args.rewrite_articles:
         rewrite_articles(cfg, limit=args.rewrite_limit, force=args.rewrite_force)
+        write_pr_description()
         return
     if args.generate_guide:
         generate_guides(cfg, count=max(1, args.guide_count), category_override=args.guide_category)
+        write_pr_description()
         return
     if args.list_candidates:
         print(f"[{cfg['site_name']}] listing every candidate in the last 72h "
@@ -1337,6 +1392,7 @@ def main() -> None:
         return
     if args.recover:
         recover_missed(cfg)
+        write_pr_description()
         return
     # A manually triggered run (someone clicked "Run workflow", or a local run)
     # must ALWAYS publish — never let the duplicate-guard silently skip a human.
@@ -1385,6 +1441,7 @@ def main() -> None:
         if c["id"] not in seen_now:
             seen["ids"].append(c["id"])
     save_seen(seen)
+    write_pr_description()
     print(f"Done. {saved} new stor{'y' if saved == 1 else 'ies'} published, "
           f"{len(candidates) - saved} not selected.")
 
