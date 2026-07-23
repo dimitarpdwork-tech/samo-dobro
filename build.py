@@ -261,6 +261,10 @@ border-radius:999px;padding:3px 10px;align-self:flex-start}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .photo-credit{position:absolute;right:6px;bottom:5px;font-family:var(--fl);font-size:.66rem;
 color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:999px;text-decoration:none}
+.ai-credit{position:absolute;right:6px;bottom:5px;font-family:var(--fl);font-size:.66rem;
+color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:999px;
+opacity:0;transition:opacity .2s;pointer-events:none}
+.thumb:hover .ai-credit,.thumb:focus-within .ai-credit{opacity:1}
 .cbody{padding:16px 18px 18px;display:flex;flex-direction:column;gap:9px;flex:1}
 .cbody h3{font-family:var(--fd);font-weight:800;font-size:1.13rem;line-height:1.28;margin:0;letter-spacing:-.01em}
 .cbody p{margin:0;color:var(--muted);font-size:.94rem}
@@ -477,7 +481,7 @@ def media(cfg, article, ui, height=180, eager=False,
         # currently (1200x675). A real limitation worth revisiting if this
         # becomes the primary image source rather than a rollout in progress.
         loading_attr = '' if eager else ' loading="lazy"'
-        credit = f'<span class="photo-credit">{esc(article.get("image_credit", "AI-generated illustration"))}</span>'
+        credit = f'<span class="ai-credit">{esc(article.get("image_credit", "AI-generated illustration"))}</span>'
         return (f'<div class="thumb" style="height:{height}px">'
                 f'<img src="{esc(article["image_path"])}" alt="{esc(article["headline"])}"{loading_attr}>'
                 f'{credit}</div>')
