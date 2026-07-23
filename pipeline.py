@@ -655,35 +655,43 @@ def clip(value: str, limit: int) -> str:
 
 
 def generate_article_image(cfg: dict, prompt: str, out_path: Path) -> dict | None:
-    """Generate an editorial illustration via FLUX.1 [schnell] on fal.ai, and
-    save it locally as WebP (never hotlinked — this repo is public, and a
-    hotlinked third-party image is also a dependency you don't control).
-    Returns None (silently) on ANY failure — a missing image should never
-    break a publish run, same principle as find_stock_photo().
+    """Generate an editorial illustration via FLUX on fal.ai (schnell or dev,
+    per cfg['fal_model']), and save it locally as WebP (never hotlinked —
+    this repo is public, and a hotlinked third-party image is also a
+    dependency you don't control). Returns None (silently) on ANY failure —
+    a missing image should never break a publish run, same principle as
+    find_stock_photo().
 
     Verified directly against fal.ai's own API docs before writing this:
     - Auth: `Authorization: Key {FAL_API_KEY}` header (the literal word
       "Key", not "Bearer")
-    - Endpoint: POST https://fal.run/fal-ai/flux/schnell (synchronous —
-      appropriate here since Schnell is sub-second; slower models would
-      need the async queue pattern instead)
+    - Endpoint: POST https://fal.run/fal-ai/flux/{schnell|dev} (synchronous
+      — appropriate for schnell, which is sub-second; dev is slower but
+      still uses the same synchronous endpoint pattern)
     - image_size as a custom {"width","height"} object is supported
-      alongside preset enum strings
+      alongside preset enum strings, for both models
     - Response: {"images": [{"url", "width", "height", "content_type"}], ...}
       — fal returns a URL to download, not the raw image bytes, so this is
       a two-step fetch: generate, then download.
-    Pricing: $0.003/megapixel, billed rounded up to the next whole
-    megapixel — 1200x675 is ~0.81MP, so this stays at the cheapest tier.
+    - IMPORTANT, confirmed directly from fal.ai's own prompting guide: base
+      FLUX does NOT support a real negative_prompt parameter, and appending
+      'no X, no Y' text is explicitly called out by fal.ai as LESS reliable
+      than positive phrasing — describe what the image SHOULD contain, not
+      what to avoid. An earlier version of this function used the weaker
+      negative-listing technique; fixed after it demonstrably still
+      produced a garbled fake scoreboard on a tennis rankings guide.
+    Pricing: schnell $0.003/MP, dev ~$0.025/MP, both billed rounded up to
+    the next whole megapixel — 1200x675 is ~0.81MP, so this stays at the
+    cheapest tier for whichever model is selected.
     """
     api_key = os.environ.get("FAL_API_KEY")
     if not api_key or not prompt:
         return None
-    # Defense-in-depth, not reliant solely on the model following instructions:
-    # append a standing negative constraint to every generation prompt. Image
-    # models cannot render legible text/numbers — asking for one anyway (a
-    # scoreboard, chart, table) reliably produces garbled nonsense, as seen
-    # directly on the ATP/WTA rankings guide's image.
-    full_prompt = f"{prompt}, no text, no numbers, no scoreboard, no charts, no tables, no UI elements"
+    # Positive framing, not a negative list — per fal.ai's own guidance above.
+    full_prompt = f"{prompt}, clean candid documentary photograph, natural unobstructed composition, plain simple background"
+    model = cfg.get("fal_model", "schnell")
+    if model not in ("schnell", "dev"):
+        model = "schnell"
     try:
         import io
         try:
@@ -693,7 +701,7 @@ def generate_article_image(cfg: dict, prompt: str, out_path: Path) -> dict | Non
             return None
 
         resp = requests.post(
-            "https://fal.run/fal-ai/flux/schnell",
+            f"https://fal.run/fal-ai/flux/{model}",
             headers={"Authorization": f"Key {api_key}", "Content-Type": "application/json"},
             json={
                 "prompt": full_prompt,
