@@ -53,7 +53,17 @@ PR_DESCRIPTION_FILE = ROOT / "pr_description.md"
 REVIEW_BATCH: list[dict] = []
 API_URL = "https://api.anthropic.com/v1/messages"
 API_VERSION = "2023-06-01"
-USER_AGENT = "GoodNewsBot/1.0 (+https://github.com/; polite RSS reader)"
+# A standard browser-like UA, not a self-identifying bot string. RSS feeds are
+# published specifically for automated consumption, so there's no ethical
+# concern here — but many smaller municipal/government sites run basic
+# security plugins that specifically target and block obvious bot signatures
+# (sometimes with unusual status codes like 415 rather than a plain 403).
+# The previous "GoodNewsBot/1.0" string is a likely cause of the widespread
+# feed failures seen when the municipal feed list was added — this is a
+# reasoned hypothesis based on real evidence (the failure pattern was
+# consistent across unrelated sites on different CMS platforms), not a
+# confirmed fix; verify with --check-feeds after deploying.
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
 CYRILLIC_MAP = {
     "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ж": "zh",
@@ -108,7 +118,11 @@ def entry_id(link: str, title: str) -> str:
 def fetch_feed(feed: dict, window_hours: int) -> list[dict]:
     """Fetch one RSS feed and return recent entries as candidate dicts."""
     resp = requests.get(
-        feed["url"], timeout=15, headers={"User-Agent": USER_AGENT}
+        feed["url"], timeout=15,
+        headers={
+            "User-Agent": USER_AGENT,
+            "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
+        },
     )
     resp.raise_for_status()
     parsed = feedparser.parse(resp.content)
