@@ -1035,14 +1035,26 @@ def build_tags(site) -> set:
     """Generate /tag/{slug}/ archive pages for tags with at least
     MIN_TAG_ARTICLES articles (paginated identically to category pages;
     page 1 is indexable, page 2+ is noindex and excluded from sitemap.xml,
-    same convention as categories). Returns the set of slugs that got a
-    page, so build_articles() knows which hashtags to render as links vs.
-    plain text."""
+    same convention as categories). Returns the set of slugs that get a
+    working link, so build_articles() knows which hashtags to render as
+    links vs. plain text.
+
+    A tag whose slug exactly matches an existing category ID (e.g. a
+    "#култура" hashtag on the same site that also has a "kultura" category)
+    does NOT get its own separate page — the category page already covers
+    that ground with richer content, and having two similarly-named but
+    only-partially-overlapping pages was a real, confusing duplication
+    found in an SEO audit. The hashtag still renders as a link (included in
+    the returned set) — build_articles() points it at the category page
+    instead of generating a redundant tag page for it."""
     cfg, ui = site.cfg, site.cfg["ui"]
     idx = build_tag_index(site.articles, site.cfg.get("tag_aliases", {}))
     qualifying = {slug: data for slug, data in idx.items()
                   if len(data["articles"]) >= MIN_TAG_ARTICLES}
+    category_ids = set(cfg["categories"].keys())
     for slug, data in qualifying.items():
+        if slug in category_ids:
+            continue  # covered by the category page instead — see docstring
         arts, display = data["articles"], data["display"]
         base_path = site.tag_path(slug)
         pages = max(1, -(-len(arts) // PAGE_SIZE))
@@ -1186,8 +1198,10 @@ def build_articles(site, linked_tags: set) -> None:
         if related:
             rel_html = (f'<div class="sec"><h2>{esc(ui["more_good"])}</h2><span class="rule"></span></div>'
                         '<div class="grid">' + "".join(card(site, r) for r in related) + "</div>")
+        def _tag_href(slug):
+            return site.cat_path(slug) if slug in cfg["categories"] else site.tag_path(slug)
         tags = "".join(
-            (f'<a class="tag" href="{site.u(site.tag_path(tag_slug(t, cfg.get("tag_aliases", {}))))}">#{esc(t)}</a>'
+            (f'<a class="tag" href="{site.u(_tag_href(tag_slug(t, cfg.get("tag_aliases", {}))))}">#{esc(t)}</a>'
              if tag_slug(t, cfg.get("tag_aliases", {})) in linked_tags
              else f'<span class="tag">#{esc(t)}</span>')
             for t in a.get("tags", []))
