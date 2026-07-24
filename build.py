@@ -647,9 +647,29 @@ def cookie_banner(site) -> str:
 </script>"""
 
 
+def truncate_title(title: str, max_len: int = 60) -> str:
+    """Truncate a rendered <title> tag to a search-engine-friendly length
+    WITHOUT touching the actual on-page headline — this only affects what
+    appears in the <title> element and search results, never the H1 users
+    actually read. Preserves the ' · SiteName' suffix intact and only
+    shortens the part before it, since the suffix is short and valuable for
+    brand recognition in SERPs. Found via a real Bing scan that 94% of
+    article titles exceeded 60 chars (median 75) — this is systemic, from
+    long headlines plus the site-name suffix, not an isolated few pages."""
+    if len(title) <= max_len:
+        return title
+    if " · " in title:
+        main, sep, suffix = title.rpartition(" · ")
+        budget = max_len - len(suffix) - len(sep) - 1  # -1 for the ellipsis
+        if budget > 20:  # only truncate the headline if a reasonable amount survives
+            return main[:budget].rstrip() + "…" + sep + suffix
+    return title[:max_len - 1].rstrip() + "…"
+
+
 def base_page(site, *, title, description, path, body, jsonld=None, og_type="website",
               og_image="/assets/og-default.png", noindex=False, is_home=False) -> str:
     cfg = site.cfg
+    title = truncate_title(title)
     ld = "".join(f'<script type="application/ld+json">{json.dumps(x, ensure_ascii=False)}</script>'
                  for x in (jsonld or []))
     robots = '<meta name="robots" content="noindex">' if noindex else ""
