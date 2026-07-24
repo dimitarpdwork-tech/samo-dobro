@@ -1,11 +1,6 @@
 name: Publish good news
 
 on:
-  push:
-    branches: [main]         # rebuild+deploy immediately on any merge or direct
-                              # edit to main — content review approves via PR
-                              # merge, but nothing was actually live until the
-                              # next scheduled run without this
   schedule:
     - cron: "17 5,11,17 * * *"   # three times a day (UTC)
   workflow_dispatch:              # run manually from the Actions tab
