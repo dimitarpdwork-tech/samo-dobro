@@ -203,10 +203,10 @@ a{color:inherit;text-decoration:none}img,svg{max-width:100%}
 font-size:.72rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;
 padding:7px 14px;background:var(--card);flex:0 0 auto}
 .search-form{display:flex;align-items:center;gap:6px;margin-left:auto;max-width:260px;flex:1 1 200px}
-.search-form input{flex:1;min-width:0;padding:8px 14px;border-radius:999px;border:1.5px solid var(--line);
-background:var(--card);color:var(--ink);font-family:var(--fb);font-size:.9rem}
+.search-form input{flex:1;min-width:0;min-height:44px;padding:8px 14px;border-radius:999px;border:1.5px solid var(--line);
+background:var(--card);color:var(--ink);font-family:var(--fb);font-size:.9rem;box-sizing:border-box}
 .search-form input:focus{outline:none;border-color:var(--p)}
-.search-form button{flex:0 0 auto;padding:8px 12px;border-radius:999px;border:1.5px solid var(--line);
+.search-form button{flex:0 0 auto;min-width:44px;min-height:44px;padding:8px 12px;border-radius:999px;border:1.5px solid var(--line);
 background:var(--card);cursor:pointer;font-size:1rem;line-height:1}
 .search-form button:hover{border-color:var(--p)}
 nav.cats{display:flex;gap:8px;overflow-x:auto;padding:16px 0 6px;scrollbar-width:none;
@@ -477,11 +477,13 @@ def media(cfg, article, ui, height=180, eager=False,
     terms, not optional — AI-generated images get an honest 'AI-generated
     illustration' label instead, consistent with the site's AI-disclosure
     policy elsewhere.
-    eager=True skips lazy-loading — use this only for the one above-the-fold
-    image per page (the article's own banner), never for listing thumbnails.
+    eager=True skips lazy-loading and adds fetchpriority="high" — use this
+    only for the one above-the-fold image per page (the article's own
+    banner), never for listing thumbnails.
     `sizes` should describe the actual rendered width in this context so the
     browser can pick the right srcset candidate — pass a wider value for the
     full-width article banner than for grid thumbnails."""
+    priority_attr = ' fetchpriority="high"' if eager else ''
     if article.get("image_path"):
         # No srcset variants yet — only one resolution is generated per image
         # currently (1200x675). A real limitation worth revisiting if this
@@ -489,7 +491,8 @@ def media(cfg, article, ui, height=180, eager=False,
         loading_attr = '' if eager else ' loading="lazy"'
         credit = f'<span class="ai-credit">{esc(article.get("image_credit", "AI-generated illustration"))}</span>'
         return (f'<div class="thumb" style="height:{height}px">'
-                f'<img src="{esc(article["image_path"])}" alt="{esc(article["headline"])}"{loading_attr}>'
+                f'<img src="{esc(article["image_path"])}" width="1200" height="675" '
+                f'alt="{esc(article["headline"])}"{loading_attr}{priority_attr}>'
                 f'{credit}</div>')
     if article.get("photo_url"):
         base_url = article["photo_url"]
@@ -497,9 +500,11 @@ def media(cfg, article, ui, height=180, eager=False,
         credit = (f'<a class="photo-credit" href="{esc(article["photo_credit_url"])}" '
                   f'target="_blank" rel="noopener">{esc(ui.get("photo_by", "Photo:"))} {esc(article["photo_credit"])} · Pexels</a>')
         loading_attr = '' if eager else ' loading="lazy"'
+        orig_w, orig_h = article.get("photo_width"), article.get("photo_height")
+        dims_attr = f' width="800" height="{round(800 * orig_h / orig_w)}"' if orig_w and orig_h else ''
         return (f'<div class="thumb" style="height:{height}px">'
-                f'<img src="{esc(pexels_resize(base_url, 800))}" srcset="{srcset}" sizes="{esc(sizes)}" '
-                f'alt="{esc(article["headline"])}"{loading_attr}>'
+                f'<img src="{esc(pexels_resize(base_url, 800))}" srcset="{srcset}" sizes="{esc(sizes)}"{dims_attr} '
+                f'alt="{esc(article["headline"])}"{loading_attr}{priority_attr}>'
                 f'{credit}</div>')
     return card_art(cfg, article, height)
 
@@ -531,12 +536,15 @@ class Site:
 
 def org_ld(site) -> dict:
     cfg = site.cfg
-    return {"@type": "Organization", "name": cfg["site_name"], "url": site.abs_("/"),
-            "logo": {"@type": "ImageObject", "url": site.abs_("/assets/apple-touch-icon.png")},
-            "foundingDate": cfg.get("founding_date", "2026-07-01"),
-            "contactPoint": {"@type": "ContactPoint", "email": cfg["contact_email"],
-                              "contactType": "editorial"},
-            "sameAs": cfg.get("same_as", [])}
+    ld = {"@type": "Organization", "name": cfg["site_name"], "url": site.abs_("/"),
+          "logo": {"@type": "ImageObject", "url": site.abs_("/assets/apple-touch-icon.png")},
+          "foundingDate": cfg.get("founding_date", "2026-07-01"),
+          "contactPoint": {"@type": "ContactPoint", "email": cfg["contact_email"],
+                            "contactType": "editorial"}}
+    same_as = cfg.get("same_as", [])
+    if same_as:
+        ld["sameAs"] = same_as
+    return ld
 
 
 def author_ld(site) -> dict:
@@ -1220,11 +1228,19 @@ def build_articles(site, linked_tags: set) -> None:
         crumbs = [(ui["home"], site.abs_("/")), (cat["label"], site.abs_(site.cat_path(a["category"]))),
                   (a["headline"], site.abs_(path))]
         if a.get("image_path"):
-            rich_image = site.abs_(a["image_path"])
+            img_url = site.abs_(a["image_path"])
+            rich_image = {"@type": "ImageObject", "url": img_url, "width": 1200, "height": 675}
         elif a.get("photo_url"):
-            rich_image = pexels_resize(a["photo_url"], 1200)
+            img_url = pexels_resize(a["photo_url"], 1200)
+            orig_w, orig_h = a.get("photo_width"), a.get("photo_height")
+            if orig_w and orig_h:
+                scaled_h = round(1200 * orig_h / orig_w)
+                rich_image = {"@type": "ImageObject", "url": img_url, "width": 1200, "height": scaled_h}
+            else:
+                rich_image = img_url  # no dimensions on file (older article) — fall back to a bare URL
         else:
-            rich_image = site.abs_("/assets/og-default.png")
+            img_url = site.abs_("/assets/og-default.png")
+            rich_image = img_url
         ld = {"@context": "https://schema.org", "@type": "NewsArticle",
               "headline": a["headline"], "description": a["meta_description"],
               "datePublished": a["published"], "dateModified": a.get("rewritten") or a.get("updated", a["published"]),
@@ -1238,7 +1254,7 @@ def build_articles(site, linked_tags: set) -> None:
               base_page(site, title=f'{a["headline"]} · {cfg["site_name"]}',
                         description=a["meta_description"] or a["summary_short"],
                         path=path, body=body, jsonld=[ld, breadcrumb_ld(site, crumbs)], og_type="article",
-                        og_image=rich_image))
+                        og_image=img_url))
 
 
 ABOUT = {
@@ -1561,6 +1577,10 @@ def build_search_page(site) -> None:
 def build_llms_txt(site) -> None:
     cfg = site.cfg
     recent = "\n".join(f'- {a["headline"]}: {site.abs_(site.article_path(a))}' for a in site.articles[:15])
+    categories = "\n".join(
+        f'- {cat["label"]}: {site.abs_(site.cat_path(cid))}'
+        for cid, cat in cfg["categories"].items()
+    )
     txt = f"""# {cfg['site_name']}
 
 > {cfg['tagline']}
@@ -1571,6 +1591,9 @@ def build_llms_txt(site) -> None:
 Every article is an original summary written from a single credited source,
 never invented, always linked. See {site.abs_('/' + cfg['about_path'] + '/')} for
 the full editorial policy and AI-disclosure statement.
+
+## Categories
+{categories}
 
 ## Recent articles
 {recent}
