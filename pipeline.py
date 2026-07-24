@@ -99,16 +99,8 @@ def save_seen(seen: dict) -> None:
     seen["ids"] = seen["ids"][-4000:]  # keep the file small
     seen["last_run"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     SEEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-    # Atomic write: write to a temp file, then os.replace() into place. This is
-    # atomic on POSIX — the file on disk is always either the complete old
-    # version or the complete new one, never a partial/interleaved mix, even
-    # if two processes race to write it at the same time. A previous version
-    # wrote directly to SEEN_FILE, which produced exactly this kind of
-    # corruption when two workflow runs touched the file at overlapping times.
-    tmp_path = SEEN_FILE.with_suffix(".json.tmp")
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    with open(SEEN_FILE, "w", encoding="utf-8") as f:
         json.dump(seen, f, ensure_ascii=False, indent=0)
-    os.replace(tmp_path, SEEN_FILE)
 
 
 def clean_text(raw: str, limit: int = 450) -> str:
@@ -797,6 +789,8 @@ def find_stock_photo(cfg: dict, query: str) -> dict | None:
             "photo_url": p["src"]["large"],
             "photo_credit": p.get("photographer", "Pexels"),
             "photo_credit_url": p.get("photographer_url") or p.get("url", "https://www.pexels.com"),
+            "photo_width": p.get("width"),
+            "photo_height": p.get("height"),
         }
     except Exception as exc:
         print(f"  [photo] lookup failed for '{query}' (non-fatal): {exc}")
