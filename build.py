@@ -38,7 +38,7 @@ CONTENT = ROOT / "content" / "articles"
 ASSETS_SRC = ROOT / "assets"
 DIST = ROOT / "dist"
 PAGE_SIZE = 12
-MIN_TAG_ARTICLES = 5  # a /tag/{slug}/ archive page is only built once a tag
+MIN_TAG_ARTICLES = 10  # a /tag/{slug}/ archive page is only built once a tag
                       # has at least this many articles — below that, the
                       # hashtag stays plain text rather than linking to a
                       # thin, near-empty page.
