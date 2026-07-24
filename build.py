@@ -912,7 +912,13 @@ def build_lists(site) -> None:
                 jsonld = [{"@context": "https://schema.org", "@type": "WebSite",
                            "name": cfg["site_name"], "url": site.abs_("/"),
                            "description": cfg["description"], "inLanguage": cfg["lang"],
-                           "publisher": org_ld(site)}]
+                           "publisher": org_ld(site),
+                           "potentialAction": {
+                               "@type": "SearchAction",
+                               "target": {"@type": "EntryPoint",
+                                          "urlTemplate": site.abs_("/search/") + "?q={search_term_string}"},
+                               "query-input": "required name=search_term_string"
+                           }}]
             elif key != "home":
                 cat = cfg["categories"][key]
                 crumbs = [(ui["home"], site.abs_("/")), (cat["label"], site.abs_(site.cat_path(key)))]
@@ -1147,7 +1153,24 @@ def build_articles(site, linked_tags: set) -> None:
         cat_unlock = a.get("cat_unlock")
         if cat_unlock:
             paras = apply_cat_unlock(paras, cat_unlock)
-        related = [r for r in site.articles if r["category"] == a["category"] and r["slug"] != a["slug"]][:3]
+        if a.get("pillar"):
+            # Prioritize sibling pillars in the same category first —
+            # cross-linking evergreen guides to each other is a stronger
+            # topical-cluster signal than whatever regular news happens to
+            # be most recent. Without this, pillars get crowded out of each
+            # other's related section entirely once enough regular news
+            # accumulates in the same category — confirmed via a real SEO
+            # audit finding zero cross-links between the 3 Nature guides
+            # despite sharing a category.
+            siblings = [r for r in site.articles if r["category"] == a["category"]
+                        and r["slug"] != a["slug"] and r.get("pillar")]
+            related = siblings[:3]
+            if len(related) < 3:
+                seen = {r["slug"] for r in related} | {a["slug"]}
+                related += [r for r in site.articles if r["category"] == a["category"]
+                            and r["slug"] not in seen][: 3 - len(related)]
+        else:
+            related = [r for r in site.articles if r["category"] == a["category"] and r["slug"] != a["slug"]][:3]
         if len(related) < 3:
             seen = {r["slug"] for r in related} | {a["slug"]}
             related += [r for r in site.articles if r["slug"] not in seen][: 3 - len(related)]
@@ -1397,21 +1420,40 @@ def build_rsl(site) -> None:
 
 def build_sitemap(site, tag_slugs: set) -> None:
     cfg = site.cfg
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    urls = [(site.abs_("/"), now), (site.abs_(f'/{cfg["about_path"]}/'), now),
-            (site.abs_(f'/{cfg["privacy_path"]}/'), now)]
+
+    def _lastmod(a):
+        return (a.get("rewritten") or a.get("updated") or "")[:10] or a["_dt"].strftime("%Y-%m-%d")
+
+    # site.articles is newest-first, so the first match in a filtered list is
+    # still the most recently touched one in that scope.
+    most_recent_overall = _lastmod(site.articles[0]) if site.articles else None
+
+    urls = []
+    if most_recent_overall:
+        urls.append((site.abs_("/"), most_recent_overall))
+    else:
+        urls.append((site.abs_("/"), None))
+    # About/Privacy are genuinely static pages with no tracked edit date —
+    # omitting lastmod is more honest than fabricating one. lastmod is an
+    # optional sitemap field; a missing value is not an error.
+    urls.append((site.abs_(f'/{cfg["about_path"]}/'), None))
+    urls.append((site.abs_(f'/{cfg["privacy_path"]}/'), None))
     # Note: page 2+ (home, category, and tag) are intentionally excluded here
     # — they carry noindex and stay reachable only via in-page pagination
     # links, so the sitemap doesn't send Google a mixed noindex-but-submitted
     # signal.
     for cid in cfg["categories"]:
-        urls.append((site.abs_(site.cat_path(cid)), now))
+        cat_arts = [a for a in site.articles if a["category"] == cid]
+        cat_lastmod = _lastmod(cat_arts[0]) if cat_arts else None
+        urls.append((site.abs_(site.cat_path(cid)), cat_lastmod))
     for slug in sorted(tag_slugs):
-        urls.append((site.abs_(site.tag_path(slug)), now))
-    def _lastmod(a):
-        return (a.get("updated") or "")[:10] or a["_dt"].strftime("%Y-%m-%d")
+        tag_arts = [a for a in site.articles if slug in {tag_slug(t, cfg.get("tag_aliases", {})) for t in a.get("tags", [])}]
+        tag_lastmod = _lastmod(tag_arts[0]) if tag_arts else None
+        urls.append((site.abs_(site.tag_path(slug)), tag_lastmod))
     urls += [(site.abs_(site.article_path(a)), _lastmod(a)) for a in site.articles]
-    body = "".join(f"<url><loc>{esc(u)}</loc><lastmod>{d}</lastmod></url>" for u, d in urls)
+    body = "".join(
+        f"<url><loc>{esc(u)}</loc>{f'<lastmod>{d}</lastmod>' if d else ''}</url>" for u, d in urls
+    )
     write(DIST / "sitemap.xml",
           f'<?xml version="1.0" encoding="UTF-8"?>'
           f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{body}</urlset>')
