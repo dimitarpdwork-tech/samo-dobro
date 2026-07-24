@@ -544,6 +544,11 @@ def org_ld(site) -> dict:
     same_as = cfg.get("same_as", [])
     if same_as:
         ld["sameAs"] = same_as
+    if cfg.get("operator_city"):
+        ld["address"] = {"@type": "PostalAddress", "addressLocality": cfg["operator_city"],
+                          "addressCountry": cfg.get("operator_country", "BG")}
+    if cfg.get("editor_name"):
+        ld["founder"] = {"@type": "Person", "name": cfg["editor_name"]}
     return ld
 
 
@@ -1323,7 +1328,12 @@ def build_about(site) -> None:
     editor = (f'<div class="editor-card" id="editorial-process">'
               f'<div class="editor-title">{esc(cfg["ui"].get("editorial_process_label", "Editorial process"))}</div>'
               f'<p>{esc(cfg.get("editorial_process_note", ""))}</p></div>')
-    body = f'<div class="about"><h1>{esc(cfg["ui"]["about"])} · {esc(cfg["site_name"])}</h1>{editor}{secs}</div>'
+    entity = ""
+    if cfg.get("entity_disclosure_note"):
+        entity = (f'<div class="editor-card" id="who-runs-this">'
+                  f'<div class="editor-title">{esc(cfg["ui"].get("entity_disclosure_label", "Who runs this site"))}</div>'
+                  f'<p>{esc(cfg["entity_disclosure_note"])}</p></div>')
+    body = f'<div class="about"><h1>{esc(cfg["ui"]["about"])} · {esc(cfg["site_name"])}</h1>{editor}{entity}{secs}</div>'
     path = f'/{cfg["about_path"]}/'
     jsonld = [{"@context": "https://schema.org", "@type": "AboutPage",
                "name": f'{cfg["ui"]["about"]} · {cfg["site_name"]}',
