@@ -1496,6 +1496,14 @@ def build_sitemap(site, tag_slugs: set) -> None:
     if key:
         write(DIST / f"{key}.txt", key)
 
+    yandex_code = cfg.get("yandex_verification", "")
+    if yandex_code:
+        # Exact format required by Yandex — confirmed against their own docs.
+        # Must contain ONLY this content, verbatim, or verification fails.
+        write(DIST / f"yandex_{yandex_code}.html",
+              '<html>\n<head>\n<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">\n'
+              f'</head>\n<body>Verification: {yandex_code}</body>\n</html>')
+
 
 # --------------------------------------------------------------- main -----
 
