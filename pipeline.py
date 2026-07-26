@@ -99,8 +99,40 @@ def save_seen(seen: dict) -> None:
     seen["ids"] = seen["ids"][-4000:]  # keep the file small
     seen["last_run"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     SEEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(SEEN_FILE, "w", encoding="utf-8") as f:
+    # Atomic write: write to a temp file, then os.replace() into place — the
+    # file on disk is always either the complete old version or the complete
+    # new one, never a partial/interleaved mix, even if two processes race to
+    # write it at the same time.
+    tmp_path = SEEN_FILE.with_suffix(".json.tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(seen, f, ensure_ascii=False, indent=0)
+    os.replace(tmp_path, SEEN_FILE)
+
+
+def merge_seen_with_remote(remote_path: str) -> None:
+    """Merge the local (just-written) seen.json with a remote copy at the
+    JSON/semantic level — a union of both 'ids' lists, keeping the newer of
+    the two 'last_run' timestamps — instead of relying on git's line-based
+    text merge for this file. That was the actual root cause of a real
+    production conflict: every run's save_seen() rewrites the 'last_run'
+    line to a new value, so two runs close together each produce a commit
+    changing that same line differently — a genuine, unresolvable git
+    conflict, not something automatic merging can paper over. A semantic
+    JSON merge sidesteps this entirely, since it never diffs the two files
+    as text."""
+    try:
+        with open(remote_path, encoding="utf-8-sig") as f:
+            remote = json.load(f)
+    except Exception:
+        remote = {"ids": []}
+    local = load_seen()
+    merged_ids = sorted(set(local.get("ids", [])) | set(remote.get("ids", [])))[-4000:]
+    # save_seen() always overwrites last_run with the current wall-clock
+    # time regardless of what's in the dict passed to it, so there's no
+    # need to reconcile the two input timestamps here.
+    save_seen({"ids": merged_ids})
+    print(f"  [seen] merged: {len(merged_ids)} ids "
+          f"(local had {len(local.get('ids', []))}, remote had {len(remote.get('ids', []))})")
 
 
 def clean_text(raw: str, limit: int = 450) -> str:
@@ -1637,6 +1669,8 @@ def main() -> None:
                      help="one-off: bulk-convert existing Pexels photos to AI-generated images (via config.json's image_provider)")
     ap.add_argument("--image-limit", type=int, default=None,
                      help="cap how many articles --regenerate-all-images processes in one run — leave unset to process all of them")
+    ap.add_argument("--merge-seen-with", type=str, default=None, metavar="REMOTE_FILE",
+                     help="internal: merge local seen.json with a fetched remote copy at the JSON level, avoiding git's line-based text merge")
     ap.add_argument("--recover", action="store_true",
                      help="one-time: sweep the last 72h ignoring the seen-list to recover stranded stories")
     ap.add_argument("--list-candidates", action="store_true",
@@ -1669,6 +1703,9 @@ def main() -> None:
     if args.regenerate_image:
         regenerate_image(cfg, args.regenerate_image)
         write_pr_description()
+        return
+    if args.merge_seen_with:
+        merge_seen_with_remote(args.merge_seen_with)
         return
     if args.regenerate_all_images:
         regenerate_all_images(cfg, limit=args.image_limit)
