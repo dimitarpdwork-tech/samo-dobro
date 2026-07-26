@@ -126,12 +126,25 @@ jobs:
           # concept of JSON structure — it can "cleanly" combine two edits
           # into something that reads as a valid text diff but invalid JSON.
           if [ -f content/seen.json ]; then
-            git add content/seen.json
-            if ! git diff --cached --quiet; then
+            # Semantic JSON merge, not a git text-merge — see merge_seen_with_remote()
+            # docstring for why this is necessary (every run rewrites the same
+            # last_run line to a different value, which is a genuine, unresolvable
+            # git conflict, not something automatic merging can paper over).
+            # Retries with a fresh fetch+merge if another run pushes in between.
+            for attempt in 1 2 3; do
+              git fetch origin main
+              git show origin/main:content/seen.json > /tmp/remote_seen.json 2>/dev/null || echo '{"ids":[]}' > /tmp/remote_seen.json
+              python3 -c "import sys; sys.path.insert(0, '.'); import pipeline; pipeline.merge_seen_with_remote('/tmp/remote_seen.json')"
+              git add content/seen.json
+              if git diff --cached --quiet; then
+                break
+              fi
               git commit -m "Update seen-articles tracking $(date -u +'%Y-%m-%d %H:%M')"
-              git pull --rebase origin main
-              git push
-            fi
+              if git push origin main; then
+                break
+              fi
+              echo "Push failed (attempt $attempt/3) — another run likely pushed in between, retrying with a fresh merge..."
+            done
           fi
           git add content ':!content/seen.json'
           if [ -d assets/articles ]; then git add assets/articles; fi
@@ -183,12 +196,25 @@ jobs:
           # concept of JSON structure — it can "cleanly" combine two edits
           # into something that reads as a valid text diff but invalid JSON.
           if [ -f content/seen.json ]; then
-            git add content/seen.json
-            if ! git diff --cached --quiet; then
+            # Semantic JSON merge, not a git text-merge — see merge_seen_with_remote()
+            # docstring for why this is necessary (every run rewrites the same
+            # last_run line to a different value, which is a genuine, unresolvable
+            # git conflict, not something automatic merging can paper over).
+            # Retries with a fresh fetch+merge if another run pushes in between.
+            for attempt in 1 2 3; do
+              git fetch origin main
+              git show origin/main:content/seen.json > /tmp/remote_seen.json 2>/dev/null || echo '{"ids":[]}' > /tmp/remote_seen.json
+              python3 -c "import sys; sys.path.insert(0, '.'); import pipeline; pipeline.merge_seen_with_remote('/tmp/remote_seen.json')"
+              git add content/seen.json
+              if git diff --cached --quiet; then
+                break
+              fi
               git commit -m "Update seen-articles tracking $(date -u +'%Y-%m-%d %H:%M')"
-              git pull --rebase origin main
-              git push
-            fi
+              if git push origin main; then
+                break
+              fi
+              echo "Push failed (attempt $attempt/3) — another run likely pushed in between, retrying with a fresh merge..."
+            done
           fi
           git add content ':!content/seen.json'
           if [ -d assets/articles ]; then git add assets/articles; fi
@@ -241,12 +267,25 @@ jobs:
           # concept of JSON structure — it can "cleanly" combine two edits
           # into something that reads as a valid text diff but invalid JSON.
           if [ -f content/seen.json ]; then
-            git add content/seen.json
-            if ! git diff --cached --quiet; then
+            # Semantic JSON merge, not a git text-merge — see merge_seen_with_remote()
+            # docstring for why this is necessary (every run rewrites the same
+            # last_run line to a different value, which is a genuine, unresolvable
+            # git conflict, not something automatic merging can paper over).
+            # Retries with a fresh fetch+merge if another run pushes in between.
+            for attempt in 1 2 3; do
+              git fetch origin main
+              git show origin/main:content/seen.json > /tmp/remote_seen.json 2>/dev/null || echo '{"ids":[]}' > /tmp/remote_seen.json
+              python3 -c "import sys; sys.path.insert(0, '.'); import pipeline; pipeline.merge_seen_with_remote('/tmp/remote_seen.json')"
+              git add content/seen.json
+              if git diff --cached --quiet; then
+                break
+              fi
               git commit -m "Update seen-articles tracking $(date -u +'%Y-%m-%d %H:%M')"
-              git pull --rebase origin main
-              git push
-            fi
+              if git push origin main; then
+                break
+              fi
+              echo "Push failed (attempt $attempt/3) — another run likely pushed in between, retrying with a fresh merge..."
+            done
           fi
           git add content ':!content/seen.json'
           if [ -d assets/articles ]; then git add assets/articles; fi
@@ -327,12 +366,25 @@ jobs:
           # concept of JSON structure — it can "cleanly" combine two edits
           # into something that reads as a valid text diff but invalid JSON.
           if [ -f content/seen.json ]; then
-            git add content/seen.json
-            if ! git diff --cached --quiet; then
+            # Semantic JSON merge, not a git text-merge — see merge_seen_with_remote()
+            # docstring for why this is necessary (every run rewrites the same
+            # last_run line to a different value, which is a genuine, unresolvable
+            # git conflict, not something automatic merging can paper over).
+            # Retries with a fresh fetch+merge if another run pushes in between.
+            for attempt in 1 2 3; do
+              git fetch origin main
+              git show origin/main:content/seen.json > /tmp/remote_seen.json 2>/dev/null || echo '{"ids":[]}' > /tmp/remote_seen.json
+              python3 -c "import sys; sys.path.insert(0, '.'); import pipeline; pipeline.merge_seen_with_remote('/tmp/remote_seen.json')"
+              git add content/seen.json
+              if git diff --cached --quiet; then
+                break
+              fi
               git commit -m "Update seen-articles tracking $(date -u +'%Y-%m-%d %H:%M')"
-              git pull --rebase origin main
-              git push
-            fi
+              if git push origin main; then
+                break
+              fi
+              echo "Push failed (attempt $attempt/3) — another run likely pushed in between, retrying with a fresh merge..."
+            done
           fi
           git add content ':!content/seen.json'
           if [ -d assets/articles ]; then git add assets/articles; fi
@@ -385,12 +437,25 @@ jobs:
           # concept of JSON structure — it can "cleanly" combine two edits
           # into something that reads as a valid text diff but invalid JSON.
           if [ -f content/seen.json ]; then
-            git add content/seen.json
-            if ! git diff --cached --quiet; then
+            # Semantic JSON merge, not a git text-merge — see merge_seen_with_remote()
+            # docstring for why this is necessary (every run rewrites the same
+            # last_run line to a different value, which is a genuine, unresolvable
+            # git conflict, not something automatic merging can paper over).
+            # Retries with a fresh fetch+merge if another run pushes in between.
+            for attempt in 1 2 3; do
+              git fetch origin main
+              git show origin/main:content/seen.json > /tmp/remote_seen.json 2>/dev/null || echo '{"ids":[]}' > /tmp/remote_seen.json
+              python3 -c "import sys; sys.path.insert(0, '.'); import pipeline; pipeline.merge_seen_with_remote('/tmp/remote_seen.json')"
+              git add content/seen.json
+              if git diff --cached --quiet; then
+                break
+              fi
               git commit -m "Update seen-articles tracking $(date -u +'%Y-%m-%d %H:%M')"
-              git pull --rebase origin main
-              git push
-            fi
+              if git push origin main; then
+                break
+              fi
+              echo "Push failed (attempt $attempt/3) — another run likely pushed in between, retrying with a fresh merge..."
+            done
           fi
           git add content ':!content/seen.json'
           if [ -d assets/articles ]; then git add assets/articles; fi
@@ -436,12 +501,25 @@ jobs:
           # concept of JSON structure — it can "cleanly" combine two edits
           # into something that reads as a valid text diff but invalid JSON.
           if [ -f content/seen.json ]; then
-            git add content/seen.json
-            if ! git diff --cached --quiet; then
+            # Semantic JSON merge, not a git text-merge — see merge_seen_with_remote()
+            # docstring for why this is necessary (every run rewrites the same
+            # last_run line to a different value, which is a genuine, unresolvable
+            # git conflict, not something automatic merging can paper over).
+            # Retries with a fresh fetch+merge if another run pushes in between.
+            for attempt in 1 2 3; do
+              git fetch origin main
+              git show origin/main:content/seen.json > /tmp/remote_seen.json 2>/dev/null || echo '{"ids":[]}' > /tmp/remote_seen.json
+              python3 -c "import sys; sys.path.insert(0, '.'); import pipeline; pipeline.merge_seen_with_remote('/tmp/remote_seen.json')"
+              git add content/seen.json
+              if git diff --cached --quiet; then
+                break
+              fi
               git commit -m "Update seen-articles tracking $(date -u +'%Y-%m-%d %H:%M')"
-              git pull --rebase origin main
-              git push
-            fi
+              if git push origin main; then
+                break
+              fi
+              echo "Push failed (attempt $attempt/3) — another run likely pushed in between, retrying with a fresh merge..."
+            done
           fi
           git add content ':!content/seen.json'
           if [ -d assets/articles ]; then git add assets/articles; fi
