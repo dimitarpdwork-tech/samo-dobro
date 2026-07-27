@@ -1,9 +1,7 @@
 name: Publish good news
 
 on:
-  schedule:
-    - cron: "17 5,11,17 * * *"   # three times a day (UTC)
-  workflow_dispatch:              # run manually from the Actions tab
+  workflow_dispatch:
     inputs:
       backfill_photos:
         description: "One-off: add real photos to existing articles that don't have one yet (instead of publishing new stories)"
