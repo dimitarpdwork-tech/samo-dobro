@@ -9,6 +9,7 @@
   "base_path": "",
   "brand": "sun",
   "article_prefix": "novina",
+  "facebook": { "start": "2026-07-27", "max_per_run": 5 },
   "about_path": "za-nas",
   "privacy_path": "poveritelnost",
   "google_site_verification": "bJKGT-YeWvk3nfXNph9lC9S4RKei3t1fopzuOoKfpSg",
