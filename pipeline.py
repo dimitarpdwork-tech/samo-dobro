@@ -877,6 +877,53 @@ def save_articles(cfg: dict, items: list[dict], candidates: list[dict], seen: di
     return saved, new_urls
 
 
+def post_new_articles_to_facebook(cfg: dict) -> None:
+    """Post any approved-but-not-yet-posted article to the Facebook Page.
+    Deliberately separate from the write-time pipeline — this must only run
+    AFTER human review approval (i.e. on push-to-main, after a PR merge),
+    never when an article is first drafted, since the whole point of the
+    review gate is that nothing goes public — including a Facebook post —
+    before a human has actually looked at it. Tracks fb_posted per-article
+    so re-running this is always safe and never double-posts. No-op if no
+    token is configured. Never fails the run — a failed post here should
+    never break a deploy."""
+    token = os.environ.get("FACEBOOK_PAGE_TOKEN")
+    page_id = os.environ.get("FACEBOOK_PAGE_ID")
+    if not token or not page_id:
+        print("  [facebook] no FACEBOOK_PAGE_TOKEN/FACEBOOK_PAGE_ID configured — skipping")
+        return
+    paths = sorted(CONTENT_DIR.rglob("*.json"))
+    posted, failed = 0, 0
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8-sig") as a_file:
+                art = json.load(a_file)
+        except Exception:
+            continue
+        if art.get("fb_posted") or not art.get("slug"):
+            continue
+        base = cfg["base_url"].rstrip("/") + cfg.get("base_path", "").rstrip("/")
+        url = f'{base}/{cfg["article_prefix"]}/{art["slug"]}/'
+        message = f'{art.get("headline", "")}\n\n{art.get("summary_short", "")}'
+        try:
+            resp = requests.post(
+                f'https://graph.facebook.com/v25.0/{page_id}/feed',
+                json={"message": message, "link": url, "access_token": token},
+                timeout=20,
+            )
+            resp.raise_for_status()
+            art["fb_posted"] = True
+            art["fb_posted_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            with open(path, "w", encoding="utf-8") as a_file:
+                json.dump(art, a_file, ensure_ascii=False, indent=2)
+            posted += 1
+            print(f"  [facebook] posted: {art.get('headline', '')[:60]}")
+        except Exception as exc:
+            failed += 1
+            print(f"  [facebook] failed (non-fatal, will retry next run): {art.get('headline', '')[:40]} — {exc}")
+    print(f"Facebook: {posted} posted, {failed} failed.")
+
+
 def ping_indexnow(cfg: dict, urls: list[str]) -> None:
     """Tell Bing/Yandex/Naver about new URLs immediately instead of waiting to be crawled.
     No-op if indexnow_key isn't set in config.json. Never fails the run — this is a nicety,
@@ -1671,6 +1718,8 @@ def main() -> None:
                      help="cap how many articles --regenerate-all-images processes in one run — leave unset to process all of them")
     ap.add_argument("--merge-seen-with", type=str, default=None, metavar="REMOTE_FILE",
                      help="internal: merge local seen.json with a fetched remote copy at the JSON level, avoiding git's line-based text merge")
+    ap.add_argument("--post-to-facebook", action="store_true",
+                     help="post any approved-but-not-yet-posted article to the Facebook Page — run this only after review approval (on push to main), never at write-time")
     ap.add_argument("--recover", action="store_true",
                      help="one-time: sweep the last 72h ignoring the seen-list to recover stranded stories")
     ap.add_argument("--list-candidates", action="store_true",
@@ -1706,6 +1755,9 @@ def main() -> None:
         return
     if args.merge_seen_with:
         merge_seen_with_remote(args.merge_seen_with)
+        return
+    if args.post_to_facebook:
+        post_new_articles_to_facebook(cfg)
         return
     if args.regenerate_all_images:
         regenerate_all_images(cfg, limit=args.image_limit)
