@@ -543,6 +543,18 @@ jobs:
             git checkout main
           fi
 
+      - name: Build the site
+        run: python build.py
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
       - name: Post newly approved articles to Facebook
         # Fires ONLY on push-to-main — i.e. only after a human merges a review
         # PR — never at write-time. Silent no-op until the FACEBOOK_* secrets
@@ -571,15 +583,3 @@ jobs:
             git pull --rebase origin main
             git push
           fi
-
-      - name: Build the site
-        run: python build.py
-
-      - uses: actions/configure-pages@v5
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
-      - id: deployment
-        uses: actions/deploy-pages@v4
