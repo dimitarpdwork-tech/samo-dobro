@@ -734,13 +734,80 @@ def truncate_title(title: str, max_len: int = 60) -> str:
     return title[:max_len - 1].rstrip() + "…"
 
 
+# Facebook's crawler rejects WebP og:images and silently substitutes another
+# image it finds on the page — observed live on 2026-07-27: article link cards
+# showed *sibling articles'* related-thumbnails instead of the declared hero.
+# Fix: for locally-hosted .webp heroes, declare a JPEG twin as og:image. The
+# twin is encoded straight into dist/ at the end of the build (the repo keeps
+# only the WebP — no doubled image storage in git). Humans still get WebP on
+# the page; only the og:image URL differs.
+OG_JPEG_TWINS: dict = {}  # "/assets/articles/x.webp" -> (width, height)
+
+
+def og_image_for(image_path: str):
+    """Return (jpg_rel_path, width, height, mime) for a local WebP hero, or
+    (None, None, None, None) when the og:image should stay as-is (non-WebP,
+    remote, or unreadable). Registers the source for write_og_jpeg_twins()."""
+    if not image_path.endswith(".webp"):
+        return None, None, None, None
+    src = ROOT / image_path.lstrip("/")
+    if not src.exists():
+        return None, None, None, None
+    try:
+        from PIL import Image
+        with Image.open(src) as im:
+            w, h = im.size
+    except Exception:
+        return None, None, None, None
+    OG_JPEG_TWINS[image_path] = (w, h)
+    return image_path[:-len(".webp")] + ".jpg", w, h, "image/jpeg"
+
+
+def write_og_jpeg_twins() -> None:
+    """Encode every registered WebP hero as a JPEG into dist/. Runs after the
+    asset copy so nothing overwrites the twins. Per-file failures are skipped
+    (a missing twin only degrades that one article's share card, and the
+    og:image then points at a 404 the Sharing Debugger will name loudly)."""
+    if not OG_JPEG_TWINS:
+        return
+    try:
+        from PIL import Image
+    except ImportError:
+        print("  [og-jpeg] Pillow not installed — og:image JPEG twins skipped "
+              "(Facebook link cards may show the wrong image)")
+        return
+    written = 0
+    for rel in OG_JPEG_TWINS:
+        src = ROOT / rel.lstrip("/")
+        out = (DIST / rel.lstrip("/")).with_suffix(".jpg")
+        try:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            with Image.open(src) as im:
+                im.convert("RGB").save(out, "JPEG", quality=85, optimize=True)
+            written += 1
+        except Exception as exc:
+            print(f"  [og-jpeg] failed for {rel} (skipped): {exc}")
+    print(f"  [og-jpeg] {written} JPEG og:image twin(s) written to dist")
+
+
 def base_page(site, *, title, description, path, body, jsonld=None, og_type="website",
-              og_image="/assets/og-default.png", noindex=False, is_home=False) -> str:
+              og_image="/assets/og-default.png", og_image_type=None,
+              og_image_width=None, og_image_height=None, noindex=False, is_home=False) -> str:
     cfg = site.cfg
     title = truncate_title(title)
     ld = "".join(f'<script type="application/ld+json">{json.dumps(x, ensure_ascii=False)}</script>'
                  for x in (jsonld or []))
     robots = '<meta name="robots" content="noindex">' if noindex else ""
+    # Explicit og:image metadata helps crawlers validate the image without a
+    # second fetch, and lets Facebook render the large card even on the very
+    # first share of a URL (without dimensions, the first share often falls
+    # back to a small-thumbnail card until the async scrape completes).
+    og_image_meta = ""
+    if og_image_type:
+        og_image_meta += f'\n<meta property="og:image:type" content="{og_image_type}">'
+    if og_image_width and og_image_height:
+        og_image_meta += (f'\n<meta property="og:image:width" content="{og_image_width}">'
+                          f'\n<meta property="og:image:height" content="{og_image_height}">')
     return f"""<!DOCTYPE html>
 <html lang="{cfg['lang']}">
 <head>
@@ -754,7 +821,7 @@ def base_page(site, *, title, description, path, body, jsonld=None, og_type="web
 <meta property="og:title" content="{esc(title)}">
 <meta property="og:description" content="{esc(description)}">
 <meta property="og:url" content="{site.abs_(path)}">
-<meta property="og:image" content="{og_image if og_image.startswith('http') else site.abs_(og_image)}">
+<meta property="og:image" content="{og_image if og_image.startswith('http') else site.abs_(og_image)}">{og_image_meta}
 <meta property="og:locale" content="{cfg['locale']}">
 {('<link rel="preconnect" href="https://images.pexels.com">' if cfg.get('pexels_api_key') else '')}
 <meta name="twitter:card" content="summary_large_image">
@@ -1332,9 +1399,11 @@ def build_articles(site, linked_tags: set) -> None:
         path = site.article_path(a)
         crumbs = [(ui["home"], site.abs_("/")), (cat["label"], site.abs_(site.cat_path(a["category"]))),
                   (a["headline"], site.abs_(path))]
+        og_img = og_w = og_h = og_mime = None
         if a.get("image_path"):
             img_url = site.abs_(a["image_path"])
             rich_image = {"@type": "ImageObject", "url": img_url, "width": 1200, "height": 675}
+            og_img, og_w, og_h, og_mime = og_image_for(a["image_path"])
         elif a.get("photo_url"):
             img_url = pexels_resize(a["photo_url"], 1200)
             orig_w, orig_h = a.get("photo_width"), a.get("photo_height")
@@ -1359,7 +1428,8 @@ def build_articles(site, linked_tags: set) -> None:
               base_page(site, title=f'{a["headline"]} · {cfg["site_name"]}',
                         description=a["meta_description"] or a["summary_short"],
                         path=path, body=body, jsonld=[ld, breadcrumb_ld(site, crumbs)], og_type="article",
-                        og_image=img_url))
+                        og_image=og_img or img_url, og_image_type=og_mime,
+                        og_image_width=og_w, og_image_height=og_h))
 
 
 ABOUT = {
@@ -1775,6 +1845,7 @@ def main() -> None:
     build_city_index(site)
     build_daily_digest(site)
     build_llms_txt(site)
+    write_og_jpeg_twins()
     print(f"[{cfg['site_name']}] built {len(articles)} articles → {DIST}")
 
 
