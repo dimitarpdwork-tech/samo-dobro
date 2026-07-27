@@ -29,7 +29,7 @@ import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import requests
 
@@ -145,7 +145,101 @@ def clean_text(raw: str, limit: int = 450) -> str:
 
 def entry_id(link: str, title: str) -> str:
     return hashlib.sha1((link or title).encode("utf-8")).hexdigest()[:16]
+def normalize_host(url: str) -> str:
+    """Return a comparable lowercase hostname without www."""
+    if not url:
+        return ""
+    try:
+        host = (urlparse(url).hostname or "").lower().strip(".")
+    except Exception:
+        return ""
 
+    if host.startswith("www."):
+        host = host[4:]
+
+    return host
+
+
+def hosts_match(expected: str, actual: str) -> bool:
+    """Allow exact domains and normal subdomain relationships."""
+    expected = (expected or "").lower().strip(".")
+    actual = (actual or "").lower().strip(".")
+
+    if not expected or not actual:
+        return False
+
+    return (
+        expected == actual
+        or actual.endswith("." + expected)
+        or expected.endswith("." + actual)
+    )
+
+
+def validate_candidate_source(candidate: dict) -> tuple[bool, str]:
+    """Check whether article URL matches the configured source domain."""
+    if candidate.get("allow_external_links"):
+        return True, ""
+
+    expected = candidate.get("expected_source_host", "")
+    actual = normalize_host(candidate.get("link", ""))
+
+    if not expected:
+        return True, ""
+
+    if not actual:
+        return False, "article URL has no valid hostname"
+
+    if hosts_match(expected, actual):
+        return True, ""
+
+    return False, f"source host mismatch: expected {expected}, got {actual}"
+
+
+SENSITIVE_TOPIC_PATTERNS = (
+    r"\bhpv\b",
+    r"\bваксин",
+    r"\bимуниз",
+    r"\bлекар",
+    r"\bмедицин",
+    r"\bболест",
+    r"\bзаболяв",
+    r"\bрак\b",
+    r"\bтерап",
+    r"\bлечение",
+    r"\bпациент",
+    r"\bздраве",
+    r"\bvirus\b",
+    r"\bвирус",
+    r"\bучен",
+    r"\bизследван",
+    r"\bнаучн",
+    r"\bоткрити",
+    r"\bднк\b",
+    r"\bdna\b",
+    r"\bгеном",
+    r"\bархеолог",
+    r"\bфосил",
+    r"\bhomo\b",
+    r"\bпроцент",
+    r"\bстатист",
+    r"\bпроучван",
+    r"\bпърв(?:ият|ата|ото|ите)\b",
+    r"\bрекорд",
+)
+
+
+def is_sensitive_candidate(candidate: dict) -> bool:
+    haystack = " ".join(
+        [
+            candidate.get("title", ""),
+            candidate.get("summary", ""),
+        ]
+    ).lower()
+
+    return any(
+        re.search(pattern, haystack, re.IGNORECASE)
+        for pattern in SENSITIVE_TOPIC_PATTERNS
+    )
 
 def fetch_feed(feed: dict, window_hours: int) -> list[dict]:
     """Fetch one RSS feed and return recent entries as candidate dicts."""
@@ -173,15 +267,30 @@ def fetch_feed(feed: dict, window_hours: int) -> list[dict]:
         title = clean_text(getattr(e, "title", ""), 200)
         if not title:
             continue
-        out.append(
-            {
-                "id": entry_id(getattr(e, "link", ""), title),
-                "title": title,
-                "summary": clean_text(getattr(e, "summary", "")),
-                "link": getattr(e, "link", ""),
-                "source": feed["name"],
-            }
-        )
+        article_link = getattr(e, "link", "")
+
+out.append(
+    {
+        "id": entry_id(article_link, title),
+        "title": title,
+        "summary": clean_text(getattr(e, "summary", "")),
+        "link": article_link,
+        "source": feed["name"],
+
+        "expected_source_host": normalize_host(feed["url"]),
+        "allow_external_links": bool(feed.get("allow_external_links", False)),
+
+        "source_published": (
+            published.strftime("%Y-%m-%dT%H:%M:%SZ")
+            if published
+            else None
+        ),
+
+        "source_fetched_at": datetime.now(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ),
+    }
+)
         if len(out) >= 12:
             break
     return out
@@ -225,13 +334,21 @@ def fetch_scraped_listing(source: dict) -> list[dict]:
                 # headline text, and this must not block that one.
                 continue
             seen_hrefs.add(href)
-            out.append({
-                "id": entry_id(href, title),
-                "title": title,
-                "summary": "",  # listing pages rarely expose a summary; full text is fetched later anyway
-                "link": href,
-                "source": source["name"],
-            })
+           out.append({
+    "id": entry_id(href, title),
+    "title": title,
+    "summary": "",
+    "link": href,
+    "source": source["name"],
+
+    "expected_source_host": normalize_host(source["url"]),
+    "allow_external_links": bool(source.get("allow_external_links", False)),
+
+    "source_published": None,
+    "source_fetched_at": datetime.now(timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    ),
+})
             if len(out) >= 12:
                 break
         if len(out) >= 12:
@@ -1331,8 +1448,21 @@ def save_one_written(cfg: dict, written: dict, cand: dict, seen: dict) -> str | 
         "body": body, "category": category,
         "tags": [clip(t, 30) for t in (written.get("tags") or [])[:5]],
         "quick_facts": [c for c in (clip(f, 120) for f in (written.get("quick_facts") or [])[:5]) if c],
-        "source_name": cand["source"], "source_url": cand["link"],
-        "published": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "lang": cfg["lang"],
+        "source_name": cand["source"],
+"source_url": cand["link"],
+
+"published": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+
+"source_published": cand.get("source_published"),
+"source_fetched_at": cand.get("source_fetched_at"),
+
+"source_host": normalize_host(cand["link"]),
+"expected_source_host": cand.get("expected_source_host", ""),
+
+"full_source_extracted": bool(cand.get("_full_source_extracted")),
+"sensitive_topic": bool(cand.get("_sensitive_topic")),
+
+"lang": cfg["lang"],
     }
     photo = get_article_photo(cfg, written, slug)
     if photo:
@@ -1345,10 +1475,25 @@ def save_one_written(cfg: dict, written: dict, cand: dict, seen: dict) -> str | 
     base = cfg["base_url"].rstrip("/") + cfg.get("base_path", "").rstrip("/")
     url = f'{base}/{cfg["article_prefix"]}/{slug}/'
     REVIEW_BATCH.append({
-        "kind": "new", "headline": headline, "summary_short": article["summary_short"],
-        "body": body, "quick_facts": article["quick_facts"],
-        "source_name": article["source_name"], "url": url,
-    })
+    "kind": "new",
+    "headline": headline,
+    "summary_short": article["summary_short"],
+    "body": body,
+    "quick_facts": article["quick_facts"],
+
+    "source_name": article["source_name"],
+    "source_url": article["source_url"],
+    "source_host": article.get("source_host", ""),
+    "expected_source_host": article.get("expected_source_host", ""),
+
+    "source_published": article.get("source_published"),
+    "source_fetched_at": article.get("source_fetched_at"),
+
+    "full_source_extracted": article.get("full_source_extracted", False),
+    "sensitive_topic": article.get("sensitive_topic", False),
+
+    "url": url,
+})
     return url
 
 
@@ -1375,9 +1520,35 @@ def run_two_phase(cfg: dict, candidates: list[dict], seen: dict, max_new: int) -
         except (KeyError, ValueError, IndexError, TypeError):
             continue
         if cand["id"] in seen_ids:
-            continue
-        full_text = fetch_full_article(cand["link"])
-        tag = "full source" if full_text else "snippet only"
+    continue
+
+# Validate that the article really belongs to the configured source.
+source_ok, source_error = validate_candidate_source(cand)
+
+if not source_ok:
+    print(
+        f"    [skip · source mismatch] {cand['title'][:55]} "
+        f"— {source_error}"
+    )
+    continue
+
+# Try to fetch the full original article.
+full_text = fetch_full_article(cand["link"])
+
+sensitive = is_sensitive_candidate(cand)
+
+cand["_sensitive_topic"] = sensitive
+cand["_full_source_extracted"] = bool(full_text)
+
+# Sensitive stories must never be written from a tiny RSS snippet.
+if sensitive and not full_text:
+    print(
+        f"    [skip · sensitive + no full source] "
+        f"{cand['title'][:65]}"
+    )
+    continue
+
+tag = "full source" if full_text else "snippet only"
         write_prompt = build_writing_prompt(cfg, cand, full_text, use_search=context_search)
         raw_response = call_claude(cfg, write_prompt, tools=search_tools, hard_fail=False)
         written = parse_delimited_article(raw_response)
@@ -1739,28 +1910,137 @@ def generate_guides(cfg: dict, count: int, category_override: str | None = None)
 
 
 def write_pr_description() -> bool:
-    """Write a clean, readable markdown summary of everything in REVIEW_BATCH
-    for the review-PR description — this is what a human reads to approve or
-    reject a batch, so it needs to read like a document, not a JSON diff.
-    Returns True if anything was written (i.e., there's something to actually
-    open a review PR for)."""
+    """Write a human-friendly editorial review report for the PR."""
     if not REVIEW_BATCH:
         return False
-    kind_label = {"new": "New article", "rewritten": "Rewritten article", "guide": "New evergreen guide"}
-    lines = [f"# {len(REVIEW_BATCH)} item(s) ready for review\n"]
+
+    kind_label = {
+        "new": "New article",
+        "rewritten": "Rewritten article",
+        "guide": "New evergreen guide",
+        "image updated": "Image updated",
+    }
+
+    lines = [
+        f"# {len(REVIEW_BATCH)} item(s) ready for review",
+        "",
+        "> Nothing below is live until this PR is merged.",
+        "",
+    ]
+
     for i, item in enumerate(REVIEW_BATCH, 1):
-        label = kind_label.get(item["kind"], "Item")
-        lines.append(f"## {i}. [{label}] {item['headline']}")
-        if item.get("source_name"):
-            lines.append(f"**Source:** {item['source_name']}\n")
-        lines.append(item["body"])
-        if item.get("quick_facts"):
-            lines.append("\n**Quick facts:**")
-            for f in item["quick_facts"]:
-                lines.append(f"- {f}")
-        lines.append(f"\n*Will be live at:* {item['url']}\n")
-        lines.append("---\n")
-    PR_DESCRIPTION_FILE.write_text("\n".join(lines), encoding="utf-8")
+        label = kind_label.get(item.get("kind"), "Item")
+
+        lines.append(
+            f"## {i}. [{label}] {item.get('headline', '')}"
+        )
+        lines.append("")
+
+        if item.get("kind") == "new":
+            source_name = item.get("source_name") or "Unknown"
+            source_url = item.get("source_url") or ""
+
+            actual_host = item.get("source_host") or "unknown"
+            expected_host = item.get("expected_source_host") or "unknown"
+
+            full_source = bool(
+                item.get("full_source_extracted")
+            )
+
+            sensitive = bool(
+                item.get("sensitive_topic")
+            )
+
+            source_match = (
+                actual_host != "unknown"
+                and expected_host != "unknown"
+                and hosts_match(expected_host, actual_host)
+            )
+
+            lines.append("### Editorial safety check")
+            lines.append("")
+            lines.append("| Check | Result |")
+            lines.append("|---|---|")
+
+            lines.append(
+                f"| Source domain | "
+                f"{'✅ Match' if source_match else '⚠️ Check manually'} "
+                f"(`{actual_host}` / expected `{expected_host}`) |"
+            )
+
+            lines.append(
+                f"| Full source extracted | "
+                f"{'✅ Yes' if full_source else '⚠️ No - snippet only'} |"
+            )
+
+            lines.append(
+                f"| Sensitive topic | "
+                f"{'⚠️ Yes - review carefully' if sensitive else '✅ No'} |"
+            )
+
+            source_date = item.get("source_published")
+
+            lines.append(
+                f"| Source publication date | "
+                f"{source_date or 'ℹ️ Not supplied by source'} |"
+            )
+
+            lines.append("")
+            lines.append(f"**Source:** {source_name}")
+
+            if source_url:
+                lines.append(
+                    f"**Original URL:** {source_url}"
+                )
+
+            lines.append("")
+
+        elif item.get("source_name"):
+            lines.append(
+                f"**Source:** {item['source_name']}"
+            )
+            lines.append("")
+
+        summary = (
+            item.get("summary_short") or ""
+        ).strip()
+
+        if summary:
+            lines.append(f"**Summary:** {summary}")
+            lines.append("")
+
+        body = (
+            item.get("body") or ""
+        ).strip()
+
+        if body:
+            lines.append("### Article text")
+            lines.append("")
+            lines.append(body)
+            lines.append("")
+
+        facts = item.get("quick_facts") or []
+
+        if facts:
+            lines.append("**Quick facts:**")
+
+            for fact in facts:
+                lines.append(f"- {fact}")
+
+            lines.append("")
+
+        lines.append(
+            f"*Will be live at:* {item.get('url', '')}"
+        )
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    PR_DESCRIPTION_FILE.write_text(
+        "\n".join(lines),
+        encoding="utf-8",
+    )
+
     return True
 
 
