@@ -305,6 +305,15 @@ letter-spacing:-.01em;margin:1.5em 0 .5em}
 letter-spacing:-.01em;margin:1.3em 0 .4em}
 .article .body h2:first-child,.article .body h3:first-child{margin-top:0}
 .tags{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}
+.share-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:24px 0;padding:16px 0;
+border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.share-label{font-family:var(--fl);font-weight:700;font-size:.9rem;color:var(--muted)}
+.share-icon,.share-native-btn{font-family:var(--fl);font-size:.83rem;font-weight:700;
+min-height:44px;padding:0 16px;display:inline-flex;align-items:center;border-radius:999px;
+border:1.5px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;
+text-decoration:none;transition:border-color .15s,transform .15s}
+.share-icon:hover,.share-native-btn:hover{border-color:var(--p);transform:translateY(-1px)}
+.share-native-btn{background:var(--ink);color:var(--card);border-color:var(--ink)}
 .tag{font-family:var(--fl);font-size:.78rem;font-weight:700;color:var(--pd);
 background:color-mix(in srgb,var(--p) 14%,var(--card));border-radius:999px;padding:5px 12px}
 .tag[href]{cursor:pointer;transition:background .15s}
@@ -468,6 +477,60 @@ def pexels_resize(url: str, width: int) -> str:
     params = [p for p in query.split("&") if p and not p.startswith(("w=", "h="))]
     params.append(f"w={width}")
     return f"{base}?{'&'.join(params)}"
+
+
+def build_share_row(cfg, ui, slug: str, url: str, headline: str) -> str:
+    """A real share row, not a decorative afterthought — this is one of the
+    lowest-effort organic-growth levers available: every reader who likes an
+    article can do the promotion the site owner doesn't have to. Facebook,
+    Viber, and WhatsApp specifically, since those are the actual dominant
+    share channels in Bulgaria, not generic guesses. Works with zero JS via
+    real share-intent URLs, then progressively upgrades to the native OS
+    share sheet on supported browsers (mostly mobile) — showing whatever
+    the reader actually has installed is better than hardcoding icons for
+    apps they may not use."""
+    import urllib.parse
+    enc_url = urllib.parse.quote(url, safe="")
+    enc_text = urllib.parse.quote(headline, safe="")
+    elem_id = f"share-{slug}"
+    label = esc(ui.get("share_label", "Share"))
+    copied_label = esc(ui.get("share_copied_label", "Link copied"))
+    copy_label = esc(ui.get("share_copy_label", "Copy link"))
+    return f"""<div class="share-row" id="{elem_id}">
+<span class="share-label">{label}:</span>
+<a class="share-icon" href="https://www.facebook.com/sharer/sharer.php?u={enc_url}" target="_blank" rel="noopener" aria-label="Facebook">Facebook</a>
+<a class="share-icon" href="viber://forward?text={enc_text}%20{enc_url}" aria-label="Viber">Viber</a>
+<a class="share-icon" href="https://wa.me/?text={enc_text}%20{enc_url}" target="_blank" rel="noopener" aria-label="WhatsApp">WhatsApp</a>
+<button type="button" class="share-icon share-copy" data-url="{esc(url)}" data-copied="{copied_label}">{copy_label}</button>
+</div>
+<script>
+(function(){{
+  var c = document.getElementById('{elem_id}');
+  if (!c) return;
+  if (navigator.share) {{
+    var native = document.createElement('button');
+    native.type = 'button';
+    native.className = 'share-native-btn';
+    native.textContent = '{label}';
+    c.innerHTML = '';
+    c.appendChild(native);
+    native.addEventListener('click', function(){{
+      navigator.share({{title: {json.dumps(headline)}, url: {json.dumps(url)}}}).catch(function(){{}});
+    }});
+    return;
+  }}
+  var copyBtn = c.querySelector('.share-copy');
+  if (copyBtn) {{
+    copyBtn.addEventListener('click', function(){{
+      navigator.clipboard.writeText(copyBtn.dataset.url).then(function(){{
+        var orig = copyBtn.textContent;
+        copyBtn.textContent = copyBtn.dataset.copied;
+        setTimeout(function(){{ copyBtn.textContent = orig; }}, 2000);
+      }});
+    }});
+  }}
+}})();
+</script>"""
 
 
 def media(cfg, article, ui, height=180, eager=False,
@@ -1249,6 +1312,8 @@ def build_articles(site, linked_tags: set) -> None:
                             f'{esc(ui.get("reviewed_by_label", "reviewed by"))} {esc(editor_name)}')
         else:
             byline_text = f'{esc(ui.get("byline_label", "Compiled by"))} {esc(cfg.get("byline_name", cfg["site_name"] + " AI"))}'
+        article_url = site.abs_(site.article_path(a))
+        share_html = build_share_row(cfg, ui, a["slug"], article_url, a["headline"])
         body = f"""<article class="article">
 <a class="backlink" href="{site.u('/')}">← {esc(ui['back_home'])}</a>
 {meta_row(site, a)}
@@ -1258,6 +1323,7 @@ def build_articles(site, linked_tags: set) -> None:
 {quick_facts_html}
 <div class="banner">{media(cfg, a, ui, height=250, eager=True, sizes="(max-width: 760px) 100vw, 720px")}</div>
 <div class="body">{paras}</div>
+{share_html}
 {f'<div class="tags">{tags}</div>' if tags else ''}
 {src}
 {cat_unlock_block(cat_unlock) if cat_unlock else ''}
