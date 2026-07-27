@@ -877,53 +877,6 @@ def save_articles(cfg: dict, items: list[dict], candidates: list[dict], seen: di
     return saved, new_urls
 
 
-def post_new_articles_to_facebook(cfg: dict) -> None:
-    """Post any approved-but-not-yet-posted article to the Facebook Page.
-    Deliberately separate from the write-time pipeline — this must only run
-    AFTER human review approval (i.e. on push-to-main, after a PR merge),
-    never when an article is first drafted, since the whole point of the
-    review gate is that nothing goes public — including a Facebook post —
-    before a human has actually looked at it. Tracks fb_posted per-article
-    so re-running this is always safe and never double-posts. No-op if no
-    token is configured. Never fails the run — a failed post here should
-    never break a deploy."""
-    token = os.environ.get("FACEBOOK_PAGE_TOKEN")
-    page_id = os.environ.get("FACEBOOK_PAGE_ID")
-    if not token or not page_id:
-        print("  [facebook] no FACEBOOK_PAGE_TOKEN/FACEBOOK_PAGE_ID configured — skipping")
-        return
-    paths = sorted(CONTENT_DIR.rglob("*.json"))
-    posted, failed = 0, 0
-    for path in paths:
-        try:
-            with open(path, encoding="utf-8-sig") as a_file:
-                art = json.load(a_file)
-        except Exception:
-            continue
-        if art.get("fb_posted") or not art.get("slug"):
-            continue
-        base = cfg["base_url"].rstrip("/") + cfg.get("base_path", "").rstrip("/")
-        url = f'{base}/{cfg["article_prefix"]}/{art["slug"]}/'
-        message = f'{art.get("headline", "")}\n\n{art.get("summary_short", "")}'
-        try:
-            resp = requests.post(
-                f'https://graph.facebook.com/v25.0/{page_id}/feed',
-                json={"message": message, "link": url, "access_token": token},
-                timeout=20,
-            )
-            resp.raise_for_status()
-            art["fb_posted"] = True
-            art["fb_posted_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            with open(path, "w", encoding="utf-8") as a_file:
-                json.dump(art, a_file, ensure_ascii=False, indent=2)
-            posted += 1
-            print(f"  [facebook] posted: {art.get('headline', '')[:60]}")
-        except Exception as exc:
-            failed += 1
-            print(f"  [facebook] failed (non-fatal, will retry next run): {art.get('headline', '')[:40]} — {exc}")
-    print(f"Facebook: {posted} posted, {failed} failed.")
-
-
 def ping_indexnow(cfg: dict, urls: list[str]) -> None:
     """Tell Bing/Yandex/Naver about new URLs immediately instead of waiting to be crawled.
     No-op if indexnow_key isn't set in config.json. Never fails the run — this is a nicety,
@@ -942,6 +895,114 @@ def ping_indexnow(cfg: dict, urls: list[str]) -> None:
         print(f"  [indexnow] pinged {len(urls)} URL(s) — HTTP {resp.status_code}")
     except Exception as exc:
         print(f"  [indexnow] ping failed (non-fatal): {exc}")
+
+
+FB_GRAPH = "https://graph.facebook.com/v25.0"
+
+
+def post_new_articles_to_facebook(cfg: dict) -> None:
+    """Share newly approved articles on the site's Facebook Page.
+
+    Runs ONLY from the push-to-main workflow step — i.e. only after a human has
+    merged a review PR — so nothing is ever announced at write-time. Reads
+    FACEBOOK_PAGE_TOKEN / FACEBOOK_PAGE_ID from the environment (GitHub
+    Secrets); with either missing it's a silent no-op, so this code is safe to
+    ship before the secrets exist.
+
+    Guards, in order:
+    - facebook.start in config.json: articles published before this date are
+      never posted. This is what keeps the pre-existing back catalog (hundreds
+      of articles with no fb_posted field) from flooding a brand-new Page the
+      first time the feature activates.
+    - fb_posted flag on each article JSON: once truthy, never posted again —
+      re-runs and re-triggered workflows can't double-post.
+    - facebook.max_per_run (default 5) + a courtesy pause between posts: a
+      giant merge trickles out across successive runs instead of firing a
+      burst that looks like spam from a day-old Page.
+
+    Failures print the full Graph API error into the Actions log and never
+    block the site build; a dead token (code 190) prints an explicit
+    regenerate-the-secret hint and stops early, since every remaining post
+    would fail identically."""
+    token = os.environ.get("FACEBOOK_PAGE_TOKEN")
+    page_id = os.environ.get("FACEBOOK_PAGE_ID")
+    if not token or not page_id:
+        print("[facebook] FACEBOOK_PAGE_TOKEN / FACEBOOK_PAGE_ID not set — skipping.")
+        return
+    fb_cfg = cfg.get("facebook", {})
+    start_raw = fb_cfg.get("start", "2026-07-27")
+    try:
+        start = datetime.strptime(start_raw, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        print(f"[facebook] bad facebook.start value {start_raw!r} (expected YYYY-MM-DD) — skipping.")
+        return
+    max_per_run = int(fb_cfg.get("max_per_run", 5))
+    base = cfg["base_url"].rstrip("/") + cfg.get("base_path", "").rstrip("/")
+
+    pending = []
+    for path in sorted(CONTENT_DIR.rglob("*.json")):
+        try:
+            with open(path, encoding="utf-8-sig") as f:
+                a = json.load(f)
+        except Exception:
+            continue  # a broken file is build.py's problem, not this step's
+        if a.get("fb_posted"):
+            continue
+        try:
+            published = datetime.strptime(a["published"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if published < start:
+            continue
+        pending.append((published, path, a))
+
+    if not pending:
+        print("[facebook] nothing new to post.")
+        return
+    pending.sort(key=lambda t: t[0])  # oldest first, so the Page feed reads chronologically
+    queue, later = pending[:max_per_run], pending[max_per_run:]
+    print(f"[facebook] {len(pending)} unposted article(s); posting {len(queue)} this run"
+          + (f", {len(later)} deferred to the next run" if later else "") + "…")
+
+    posted = failed = 0
+    for i, (published, path, a) in enumerate(queue):
+        url = f'{base}/{cfg["article_prefix"]}/{a["slug"]}/'
+        message = (a.get("headline") or "").strip()
+        summary = (a.get("summary_short") or "").strip()
+        if summary:
+            message = f"{message}\n\n{summary}"
+        try:
+            resp = requests.post(
+                f"{FB_GRAPH}/{page_id}/feed",
+                data={"message": message, "link": url, "access_token": token},
+                timeout=20,
+            )
+            data = resp.json()
+        except Exception as exc:
+            failed += 1
+            print(f"  [fail] {a.get('headline', '?')}: request error {exc}")
+            continue
+        if resp.ok and data.get("id"):
+            a["fb_posted"] = True
+            a["fb_post_id"] = data["id"]
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(a, f, ensure_ascii=False, indent=2)
+            posted += 1
+            print(f"  [posted] {a['headline']} → {data['id']}")
+        else:
+            failed += 1
+            err = data.get("error") or {}
+            print(f"  [fail] {a.get('headline', '?')}: HTTP {resp.status_code} — "
+                  f"{json.dumps(err, ensure_ascii=False)}")
+            if err.get("code") == 190:
+                print("  → the Page token is invalid or revoked. Regenerate it "
+                      "(Graph API Explorer → debugger 'Extend Access Token' → GET me/accounts) "
+                      "and update the FACEBOOK_PAGE_TOKEN repository secret.")
+                break  # every remaining post would fail the same way
+        if i < len(queue) - 1:
+            time.sleep(3)  # be gentle with a young Page
+    print(f"[facebook] done: {posted} posted, {failed} failed"
+          + (f", {len(later)} still queued for the next run." if later else "."))
 
 
 def check_feeds(cfg: dict) -> None:
@@ -1716,10 +1777,10 @@ def main() -> None:
                      help="one-off: bulk-convert existing Pexels photos to AI-generated images (via config.json's image_provider)")
     ap.add_argument("--image-limit", type=int, default=None,
                      help="cap how many articles --regenerate-all-images processes in one run — leave unset to process all of them")
+    ap.add_argument("--post-facebook", action="store_true",
+                     help="share newly approved (merged-to-main) articles on the Facebook Page, then exit")
     ap.add_argument("--merge-seen-with", type=str, default=None, metavar="REMOTE_FILE",
                      help="internal: merge local seen.json with a fetched remote copy at the JSON level, avoiding git's line-based text merge")
-    ap.add_argument("--post-to-facebook", action="store_true",
-                     help="post any approved-but-not-yet-posted article to the Facebook Page — run this only after review approval (on push to main), never at write-time")
     ap.add_argument("--recover", action="store_true",
                      help="one-time: sweep the last 72h ignoring the seen-list to recover stranded stories")
     ap.add_argument("--list-candidates", action="store_true",
@@ -1756,7 +1817,7 @@ def main() -> None:
     if args.merge_seen_with:
         merge_seen_with_remote(args.merge_seen_with)
         return
-    if args.post_to_facebook:
+    if args.post_facebook:
         post_new_articles_to_facebook(cfg)
         return
     if args.regenerate_all_images:
