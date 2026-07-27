@@ -621,11 +621,15 @@ def author_ld(site) -> dict:
     article via the site's real review-PR workflow before it publishes),
     or the honest Organization fallback otherwise. Never a fabricated
     Person with invented credentials — see /<about_path>/#editorial-process
-    for the disclosed process."""
+    for the disclosed process. The Person's 'description' explicitly
+    discloses AI involvement in structured data itself — not just on the
+    visible page — since the on-page byline already says this and the
+    schema shouldn't tell a different story than what a reader actually sees."""
     cfg = site.cfg
     editor_name = cfg.get("editor_name", "")
     if editor_name:
         return {"@type": "Person", "name": editor_name,
+                "description": "Articles on this site are AI-drafted from a credited source and reviewed by this editor before publication.",
                 "url": site.abs_(f'/{cfg["about_path"]}/#editorial-process')}
     name = cfg.get("byline_name", f'{cfg["site_name"]} AI Editorial System')
     return {"@type": "Organization", "name": name,
@@ -1345,7 +1349,18 @@ def build_articles(site, linked_tags: set) -> None:
                 related += [r for r in site.articles if r["category"] == a["category"]
                             and r["slug"] not in seen][: 3 - len(related)]
         else:
-            related = [r for r in site.articles if r["category"] == a["category"] and r["slug"] != a["slug"]][:3]
+            a_tags = set(a.get("tags", []))
+            same_cat = [r for r in site.articles if r["category"] == a["category"] and r["slug"] != a["slug"]]
+            # Prioritize articles sharing an actual tag — genuinely topical,
+            # not just "published in the same broad category around the same
+            # time," which could surface an unrelated story just because it's
+            # recent. Falls back to the original recency-only behavior when
+            # no tag overlap exists, so sparsely-tagged articles are unaffected.
+            tag_matches = [r for r in same_cat if a_tags & set(r.get("tags", []))]
+            related = tag_matches[:3]
+            if len(related) < 3:
+                seen = {r["slug"] for r in related} | {a["slug"]}
+                related += [r for r in same_cat if r["slug"] not in seen][: 3 - len(related)]
         if len(related) < 3:
             seen = {r["slug"] for r in related} | {a["slug"]}
             related += [r for r in site.articles if r["slug"] not in seen][: 3 - len(related)]
@@ -1638,6 +1653,8 @@ def build_sitemap(site, tag_slugs: set) -> None:
     # optional sitemap field; a missing value is not an error.
     urls.append((site.abs_(f'/{cfg["about_path"]}/'), None))
     urls.append((site.abs_(f'/{cfg["privacy_path"]}/'), None))
+    if cfg.get("known_cities"):
+        urls.append((site.abs_(f'/{cfg.get("cities_path", "cities")}/'), most_recent_overall))
     # Note: page 2+ (home, category, and tag) are intentionally excluded here
     # — they carry noindex and stay reachable only via in-page pagination
     # links, so the sitemap doesn't send Google a mixed noindex-but-submitted
