@@ -1,0 +1,151 @@
+name: Reject article from review PR
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  reject-article:
+    if: >-
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/reject ')
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate request and inspect PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "$AUTHOR_ASSOCIATION" in
+            OWNER|MEMBER|COLLABORATOR)
+              ;;
+            *)
+              echo "Only the repository owner/member/collaborator may reject articles."
+              exit 1
+              ;;
+          esac
+
+          SLUG="$(python3 - <<'PY'
+          import os
+          import re
+          import sys
+
+          body = os.environ["COMMENT_BODY"].strip()
+          match = re.fullmatch(r"/reject\s+([a-z0-9-]+)\s*", body)
+          if not match:
+              print("Invalid command. Use exactly: /reject article-slug", file=sys.stderr)
+              raise SystemExit(2)
+          print(match.group(1))
+          PY
+          )"
+
+          HEAD_REF="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.head.ref')"
+          HEAD_REPO="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.head.repo.full_name')"
+
+          if [ "$HEAD_REPO" != "$REPOSITORY" ]; then
+            echo "Refusing to push to a fork."
+            exit 1
+          fi
+
+          case "$HEAD_REF" in
+            review/*)
+              ;;
+            *)
+              echo "This command only works on review/* PR branches."
+              exit 1
+              ;;
+          esac
+
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+          echo "head_ref=$HEAD_REF" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the review branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.head_ref }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Remove rejected article
+        run: python tools/reject_article.py "${{ steps.pr.outputs.slug }}"
+
+      - name: Commit rejection to the same PR
+        env:
+          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "good-news-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A content/articles assets/articles 2>/dev/null || true
+
+          if git diff --cached --quiet; then
+            echo "Nothing changed."
+            exit 1
+          fi
+
+          git commit -m "Reject article: ${{ steps.pr.outputs.slug }}"
+          git push origin "HEAD:$HEAD_REF"
+
+      - name: Remove rejected article from PR description
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          SLUG: ${{ steps.pr.outputs.slug }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh pr view "$PR_NUMBER" --repo "$REPOSITORY" --json body --jq '.body' > /tmp/pr-body.md
+
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          slug = os.environ["SLUG"]
+          path = Path("/tmp/pr-body.md")
+          body = path.read_text(encoding="utf-8")
+          marker = f"/reject {slug}"
+
+          chunks = body.split("\n---\n")
+          kept = [chunk for chunk in chunks if marker not in chunk]
+          new_body = "\n---\n".join(kept).strip() + "\n"
+
+          Path("/tmp/pr-body-updated.md").write_text(new_body, encoding="utf-8")
+          PY
+
+          gh pr edit "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body-file /tmp/pr-body-updated.md
+
+      - name: Confirm rejection
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          SLUG: ${{ steps.pr.outputs.slug }}
+        run: |
+          gh pr comment "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body "✅ Removed \`$SLUG\` from this review PR. You can merge the remaining articles normally."
