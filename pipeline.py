@@ -1475,6 +1475,7 @@ def save_one_written(cfg: dict, written: dict, cand: dict, seen: dict) -> str | 
     REVIEW_BATCH.append({
         "kind": "new",
         "headline": headline,
+        "slug": slug,
         "summary_short": article["summary_short"],
         "body": body,
         "quick_facts": article["quick_facts"],
@@ -1983,6 +1984,13 @@ def write_pr_description() -> bool:
             if source_url:
                 lines.append(
                     f"**Original URL:** {source_url}"
+                )
+
+            reject_slug = item.get("slug")
+            if reject_slug:
+                lines.append("")
+                lines.append(
+                    f"**Reject this article:** `/reject {reject_slug}`"
                 )
 
             lines.append("")
