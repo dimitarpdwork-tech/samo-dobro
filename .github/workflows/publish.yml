@@ -543,6 +543,32 @@ jobs:
             git checkout main
           fi
 
+      - name: Post approved articles to Facebook
+        # Gated to push events ONLY — i.e. only after a PR merge. This must
+        # never run at write-time, since the entire point of the review gate
+        # is that nothing goes public — including a Facebook post — before a
+        # human has actually approved it.
+        if: github.event_name == 'push'
+        env:
+          FACEBOOK_PAGE_TOKEN: ${{ secrets.FACEBOOK_PAGE_TOKEN }}
+          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
+        run: python pipeline.py --post-to-facebook
+
+      - name: Commit Facebook post tracking
+        # Records which articles were posted so a future run never double-posts.
+        # This commit will itself trigger the push workflow again, but that
+        # follow-up run finds nothing left to post and makes no further
+        # commit — the loop is bounded to at most one extra run, not infinite.
+        if: github.event_name == 'push'
+        run: |
+          git config user.name "good-news-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add content
+          if ! git diff --cached --quiet; then
+            git commit -m "Track Facebook posts $(date -u +'%Y-%m-%d %H:%M')"
+            git push origin main
+          fi
+
       - name: Build the site
         run: python build.py
 
