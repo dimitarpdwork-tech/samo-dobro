@@ -478,12 +478,6 @@ jobs:
             fi
             git checkout main
           fi
-          if [ -d assets/articles ]; then git add assets/articles; fi
-          if ! git diff --cached --quiet; then
-            git commit -m "Photo backfill $(date -u +'%Y-%m-%d %H:%M')"
-            git pull --rebase origin main
-            git push
-          fi
 
       - name: Open review PR (daily pipeline)
         if: github.event_name != 'push' && github.event.inputs.backfill_photos != 'true' && github.event.inputs.regenerate_image == '' && github.event.inputs.regenerate_all_images != 'true' && github.event.inputs.check_feeds != 'true' && github.event.inputs.recover != 'true' && github.event.inputs.list_candidates != 'true' && github.event.inputs.rewrite_articles != 'true' && github.event.inputs.generate_guide != 'true'
@@ -543,6 +537,7 @@ jobs:
             git checkout main
           fi
 
+
       - name: Build the site
         run: python build.py
 
@@ -557,15 +552,23 @@ jobs:
 
       - name: Post newly approved articles to Facebook
         # Fires ONLY on push-to-main — i.e. only after a human merges a review
-        # PR — never at write-time. Silent no-op until the FACEBOOK_* secrets
-        # exist. The per-article fb_posted flag plus the facebook.start cutoff
-        # in config.json mean re-runs never double-post and the pre-existing
-        # back catalog is never flooded onto the Page.
+        # PR — never at write-time. Runs AFTER the Pages deploy so article
+        # URLs are already live when Facebook's crawler scrapes them; posting
+        # before deploy would make Facebook cache a 404 link preview. This
+        # ordering also means a Facebook failure can never block a deploy.
+        # Silent no-op until the FACEBOOK_* secrets exist. The per-article
+        # fb_posted flag plus the facebook.start cutoff in config.json mean
+        # re-runs never double-post and the pre-existing back catalog is
+        # never flooded onto the Page.
         if: github.event_name == 'push'
         env:
           FACEBOOK_PAGE_TOKEN: ${{ secrets.FACEBOOK_PAGE_TOKEN }}
           FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
-        run: python pipeline.py --post-facebook
+        run: |
+          # Give Pages/Cloudflare a moment to settle after the deploy —
+          # Facebook caches whatever its first scrape of each URL sees.
+          sleep 30
+          python pipeline.py --post-facebook
 
       - name: Commit Facebook bookkeeping (direct — no review needed)
         # fb_posted flags are dedup bookkeeping, not editorial content — the
@@ -580,6 +583,6 @@ jobs:
           git add content/articles
           if ! git diff --cached --quiet; then
             git commit -m "Mark articles as posted to Facebook $(date -u +'%Y-%m-%d %H:%M')"
-            git pull --rebase origin main
+            git pull --rebase --autostash origin main
             git push
           fi
