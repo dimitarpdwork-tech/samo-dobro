@@ -293,10 +293,6 @@
       "url": "https://www.bozhurishte.bg/feed/"
     },
     {
-      "name": "Община Бойница",
-      "url": "https://fakti.bg/feed"
-    },
-    {
       "name": "Община Болярово",
       "url": "https://www.bolyarovo.bg/feed/"
     },
@@ -305,20 +301,12 @@
       "url": "https://www.borovan.bg/feed"
     },
     {
-      "name": "Община Борово",
-      "url": "https://presstv.bg/feed/"
-    },
-    {
       "name": "Община Ботевград",
       "url": "https://botevgrad.start.bg/rss.php"
     },
     {
       "name": "Община Брегово",
       "url": "https://bregovo.bg/feed"
-    },
-    {
-      "name": "Община Бяла (Варна)",
-      "url": "https://www.vesti.bg/rss"
     },
     {
       "name": "Община Варна",
@@ -359,10 +347,6 @@
     {
       "name": "Община Димово",
       "url": "https://dimovo.bg/feed/"
-    },
-    {
-      "name": "Община Долни чифлик",
-      "url": "https://provaton.bg/feed/"
     },
     {
       "name": "Община Дулово",
@@ -473,10 +457,6 @@
       "url": "https://simitli.bg/index.php?format=feed&type=rss&lang=bg"
     },
     {
-      "name": "Община Смолян",
-      "url": "https://www.peika.bg/_l.Services::Rss_a.articles.html?exml=1"
-    },
-    {
       "name": "Община Сопот",
       "url": "http://www.sopot-municipality.com/joomla/index.php?format=feed&type=rss"
     },
@@ -503,10 +483,6 @@
     {
       "name": "Община Черноочене",
       "url": "https://chernoochene.com/?feed=rss2"
-    },
-    {
-      "name": "Община Чирпан",
-      "url": "https://midalidare.bg/rss_feed/view/1"
     },
     {
       "name": "Община Шабла",
