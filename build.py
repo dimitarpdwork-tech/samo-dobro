@@ -1414,6 +1414,57 @@ def build_city_index(site, cities: dict) -> list[str]:
     return created
 
 
+def build_city_tag_redirects(site, cities: dict) -> list[str]:
+    """Cities used to live at /tag/<slug>/ before they moved to dedicated hub
+    pages. Those URLs may already be crawled, linked from an old Facebook
+    share, or sitting in someone's bookmarks, so leave a forwarding stub rather
+    than a bare 404.
+
+    GitHub Pages cannot serve a real HTTP 301, so this is the static
+    equivalent: an instant meta refresh, a rel=canonical pointing at the hub so
+    search engines consolidate the two URLs, a JS fallback, and a plain visible
+    link for anyone whose browser blocks the refresh.
+
+    Deliberately NOT noindex. 'noindex' tells a crawler to drop the URL, while
+    'canonical' tells it to fold the URL into the target — contradictory
+    instructions, and Google's own guidance is against combining them, since
+    the noindex tends to win and the consolidation is lost. The canonical alone
+    does what's actually wanted. These stubs are also kept out of sitemap.xml:
+    a sitemap should list destinations, not forwarding addresses.
+
+    Safe against collisions because build_tags() skips city slugs entirely, so
+    nothing else writes to these paths."""
+    cfg, ui = site.cfg, site.cfg["ui"]
+    cities_path = cfg.get("cities_path", "cities")
+    created = []
+    for slug, (name, _arts) in cities.items():
+        target_rel = site.u(f'/{cities_path}/{slug}/')
+        target_abs = site.abs_(f'/{cities_path}/{slug}/')
+        title = ui.get("city_hub_title", "Good news from {city}").format(city=name)
+        notice = ui.get("redirect_notice", "This page has moved to:")
+        html_doc = f"""<!DOCTYPE html>
+<html lang="{cfg['lang']}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{esc(title)} · {esc(cfg['site_name'])}</title>
+<link rel="canonical" href="{target_abs}">
+<meta http-equiv="refresh" content="0; url={target_rel}">
+<link rel="stylesheet" href="{site.u('/assets/style.css')}">
+</head>
+<body class="brand-{cfg['brand']}">
+<main class="wrap" style="padding:64px 0;text-align:center">
+<p>{esc(notice)}</p>
+<p><a class="btn" href="{target_rel}">{esc(title)} →</a></p>
+</main>
+<script>location.replace({json.dumps(target_rel)});</script>
+</body>
+</html>"""
+        write(DIST / "tag" / slug / "index.html", html_doc)
+        created.append(f'/tag/{slug}/')
+    return created
+
+
 def newsletter_cta(site) -> str:
     """Inline newsletter CTA appended to the home page and article pages."""
     cfg, ui = site.cfg, site.cfg["ui"]
@@ -2096,6 +2147,9 @@ def main() -> None:
     build_404(site)
     build_feed(site)
     city_paths = build_city_index(site, cities)
+    # Forwarding stubs for the old /tag/<city>/ URLs. Not added to extra_paths:
+    # a sitemap should list destinations, not redirects.
+    redirect_paths = build_city_tag_redirects(site, cities)
     newsletter_path = build_newsletter_page(site)
     submit_path = build_submit_page(site)
     build_sitemap(site, qualifying_tag_slugs,
@@ -2108,7 +2162,7 @@ def main() -> None:
     build_llms_txt(site)
     write_og_jpeg_twins()
     print(f"[{cfg['site_name']}] built {len(articles)} articles, "
-          f"{len(cities)} city hub(s) → {DIST}")
+          f"{len(cities)} city hub(s), {len(redirect_paths)} tag redirect(s) → {DIST}")
 
 
 if __name__ == "__main__":
