@@ -5,11 +5,16 @@ import argparse
 import json
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
+import sys
+
+# Allow scripts launched as `python tools/<script>.py` to import pipeline.py
+# from the repository root in GitHub Actions and local runs.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 from zoneinfo import ZoneInfo
 
 import pipeline
-
-ROOT = Path(__file__).resolve().parents[1]
 CONTENT = ROOT / "content" / "articles"
 OUTPUT = ROOT / "weekly_roundup.md"
 SOFIA = ZoneInfo("Europe/Sofia")
