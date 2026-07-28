@@ -537,7 +537,9 @@ jobs:
 
 
       - name: Build the site
-        run: python build.py
+        run: |
+          python build.py
+          python tools/postbuild_growth.py
 
       - uses: actions/configure-pages@v5
 
