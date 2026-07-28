@@ -54,15 +54,10 @@ def article_url(cfg: dict, article: dict) -> str:
 
 
 def article_ref(cfg: dict, article: dict) -> dict:
-    return {
-        "slug": article["slug"],
-        "headline": article.get("headline", ""),
-        "summary_short": article.get("summary_short", ""),
-        "category": article.get("category", ""),
-        "tags": article.get("tags") or [],
-        "url": article_url(cfg, article),
-        "published": article.get("published", ""),
-    }
+    # Keep the Issue payload small. The publishing workflow reloads the full
+    # article JSON by slug, so duplicating headlines, summaries, tags and URLs
+    # inside a hidden base64 block is unnecessary.
+    return {"slug": article["slug"]}
 
 
 def diverse_week_selection(articles: list[dict], limit: int = 10) -> list[dict]:
@@ -222,10 +217,7 @@ def build_prompt(
 ## 4. Идеи за човешки follow-up
 До 5 идеи за интервю, коментар или оригинален follow-up.
 
-## 5. Всички публикации от седмицата
-Компактен списък с всички заглавия и URL.
-
-ПУБЛИКУВАНИ СТАТИИ:
+ПУБЛИКУВАНИ СТАТИИ ЗА АНАЛИЗ:
 {chr(10).join(rows)}
 """
 
@@ -321,10 +313,34 @@ def main() -> int:
         "> Това е редакционен бриф. Нищо не се публикува автоматично.\n\n"
     )
 
-    OUTPUT.write_text(
-        header + brief + "\n" + "\n".join(command_help),
-        encoding="utf-8",
-    )
+    issue_body = header + brief + "\n" + "\n".join(command_help)
+
+    # GitHub Issues have a 65,536-character body limit. Keep a safety margin
+    # for Unicode and future formatting changes. The hidden queue must remain
+    # intact, so trim only the human-readable Claude brief when necessary.
+    max_chars = 60000
+    if len(issue_body) > max_chars:
+        hidden_start = "\n<!-- DOBRODELO_ROUNDUP_QUEUE_B64:"
+        marker_at = issue_body.rfind(hidden_start)
+        if marker_at == -1:
+            raise RuntimeError("Roundup queue marker is missing.")
+
+        hidden = issue_body[marker_at:]
+        available = max_chars - len(header) - len(hidden) - 300
+        if available < 2000:
+            raise RuntimeError(
+                "Roundup metadata is still too large for a GitHub Issue. "
+                "Reduce the number of generated options."
+            )
+
+        brief = brief[:available].rstrip()
+        brief += (
+            "\n\n> Брифът е съкратен автоматично заради лимита на GitHub Issue. "
+            "Номерираните предложения и данните за `/roundup` са запазени изцяло.\n"
+        )
+        issue_body = header + brief + "\n" + "\n".join(command_help)
+
+    OUTPUT.write_text(issue_body, encoding="utf-8")
     print(f"Wrote {OUTPUT} with {len(options)} roundup option(s).")
     return 0
 
