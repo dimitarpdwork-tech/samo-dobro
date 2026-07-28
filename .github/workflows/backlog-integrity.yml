@@ -1,0 +1,69 @@
+name: Backlog integrity audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      fix_source_names:
+        description: "Automatically fix clear source-name/domain mismatches in a review PR"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run integrity audit
+        shell: bash
+        run: |
+          if [ "${{ github.event.inputs.fix_source_names }}" = "true" ]; then
+            python tools/backlog_integrity.py --fix
+          else
+            python tools/backlog_integrity.py
+          fi
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backlog-integrity-audit
+          path: backlog_audit.md
+
+      - name: Open review PR if safe fixes changed files
+        if: github.event.inputs.fix_source_names == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "good-news-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add content/articles
+          if git diff --cached --quiet; then
+            echo "No automatic fixes were necessary."
+            exit 0
+          fi
+
+          BRANCH="review/backlog-integrity-$(date -u +%Y%m%d-%H%M%S)"
+          git checkout -b "$BRANCH"
+          git commit -m "Fix historical source attribution"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "Review: historical source-attribution fixes" \
+            --body-file backlog_audit.md

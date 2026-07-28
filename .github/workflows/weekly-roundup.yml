@@ -1,0 +1,59 @@
+name: Weekly roundup brief
+
+on:
+  workflow_dispatch:
+    inputs:
+      week_ending:
+        description: "Optional Saturday date YYYY-MM-DD; leave empty for most recent Saturday"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  weekly-roundup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build weekly editorial brief
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.week_ending }}" ]; then
+            python tools/weekly_roundup.py --week-ending "${{ github.event.inputs.week_ending }}"
+          else
+            python tools/weekly_roundup.py
+          fi
+
+      - name: Ensure label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create weekly-roundup \
+            --repo "${{ github.repository }}" \
+            --description "Weekly editorial roundup brief" \
+            --color "57A773" \
+            --force
+
+      - name: Open weekly brief issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="☀ Седмичен обзор — $(date -u +'%Y-%m-%d')"
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "$TITLE" \
+            --label weekly-roundup \
+            --body-file weekly_roundup.md
