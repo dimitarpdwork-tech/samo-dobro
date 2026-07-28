@@ -5,16 +5,11 @@ import argparse
 import json
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
-import sys
-
-# Allow scripts launched as `python tools/<script>.py` to import pipeline.py
-# from the repository root in GitHub Actions and local runs.
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 from zoneinfo import ZoneInfo
 
 import pipeline
+
+ROOT = Path(__file__).resolve().parents[1]
 CONTENT = ROOT / "content" / "articles"
 OUTPUT = ROOT / "weekly_roundup.md"
 SOFIA = ZoneInfo("Europe/Sofia")
@@ -45,7 +40,7 @@ def load_articles(start_local: datetime, end_local: datetime) -> list[dict]:
     return out
 
 
-def build_prompt(cfg: dict, articles: list[dict], monday: date, saturday: date) -> str:
+def build_prompt(cfg: dict, articles: list[dict], week_start: date, saturday: date) -> str:
     rows = []
     base = cfg["base_url"].rstrip("/") + cfg.get("base_path", "").rstrip("/")
     prefix = cfg["article_prefix"]
@@ -64,7 +59,7 @@ def build_prompt(cfg: dict, articles: list[dict], monday: date, saturday: date) 
 
     return f"""Ти си редакционен помощник на "Добро Дело".
 
-Направи РЕДАКЦИОНЕН БРИФ за седмичен обзор за периода {monday.isoformat()} – {saturday.isoformat()}.
+Направи РЕДАКЦИОНЕН БРИФ за седмичен обзор за периода {week_start.isoformat()} – {saturday.isoformat()}.
 Използвай САМО информацията в списъка по-долу. Не добавяй външни факти и не измисляй подробности.
 
 Това НЕ е готова статия. Целта е Димитър да може да избере идея и сам да направи оригинален обзор.
@@ -117,8 +112,12 @@ def main() -> int:
     else:
         saturday = most_recent_saturday(datetime.now(SOFIA).date())
 
-    monday = saturday - timedelta(days=5)
-    start_local = datetime.combine(monday, time.min, SOFIA)
+    # A full 7-day week ending Saturday: Sunday 00:00 through Saturday 23:59.
+    # The previous Monday-start window (days=5) silently excluded every
+    # Sunday from every roundup — Sunday fell in a permanent gap between
+    # one week's Saturday cutoff and the next week's Monday start.
+    week_start = saturday - timedelta(days=6)
+    start_local = datetime.combine(week_start, time.min, SOFIA)
     end_local = datetime.combine(saturday, time.max, SOFIA)
 
     cfg = pipeline.load_config()
@@ -126,13 +125,13 @@ def main() -> int:
 
     if not articles:
         OUTPUT.write_text(
-            f"# Седмичен редакционен бриф\n\nНяма намерени статии за {monday} – {saturday}.\n",
+            f"# Седмичен редакционен бриф\n\nНяма намерени статии за {week_start} – {saturday}.\n",
             encoding="utf-8",
         )
         print("No articles found for selected week.")
         return 0
 
-    prompt = build_prompt(cfg, articles, monday, saturday)
+    prompt = build_prompt(cfg, articles, week_start, saturday)
     raw = pipeline.call_claude(
         cfg,
         prompt,
@@ -141,7 +140,7 @@ def main() -> int:
     ).strip()
 
     header = (
-        f"> Период: **{monday.strftime('%d.%m.%Y')} – {saturday.strftime('%d.%m.%Y')}**  \n"
+        f"> Период: **{week_start.strftime('%d.%m.%Y')} – {saturday.strftime('%d.%m.%Y')}**  \n"
         f"> Публикувани материали: **{len(articles)}**  \n"
         "> Това е редакционен бриф, не автоматично публикувана статия.\n\n"
     )

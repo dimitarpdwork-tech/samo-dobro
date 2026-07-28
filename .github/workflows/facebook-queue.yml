@@ -1,0 +1,57 @@
+name: Facebook post queue
+
+# Drains any Facebook posts deferred by facebook.max_per_run in config.json.
+#
+# Why this exists: publish.yml posts up to max_per_run after each merge, then
+# commits the fb_posted flags. That commit was previously assumed to retrigger
+# publish.yml and post the remainder — but pushes made with the default
+# GITHUB_TOKEN deliberately do NOT trigger `on: push` workflows (GitHub blocks
+# it to prevent runaway loops). So a merge of, say, 12 articles posted 5 and
+# left 7 sitting until the *next* merge, which on a quiet week could be days.
+#
+# This runs on its own schedule and posts the next batch. It makes no commit
+# when there is nothing left to post, so it is free and silent most of the time.
+
+on:
+  schedule:
+    # Every 3 hours. With the default max_per_run of 5 that is up to 40
+    # posts/day of drain capacity — comfortably more than the site publishes.
+    - cron: "40 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: facebook-queue
+  cancel-in-progress: false
+
+jobs:
+  post-queue:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Post any queued articles
+        env:
+          FACEBOOK_PAGE_TOKEN: ${{ secrets.FACEBOOK_PAGE_TOKEN }}
+          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
+        run: python pipeline.py --post-facebook
+
+      - name: Commit Facebook bookkeeping
+        run: |
+          git config user.name "good-news-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add content/articles
+          if ! git diff --cached --quiet; then
+            git commit -m "Mark articles as posted to Facebook $(date -u +'%Y-%m-%d %H:%M')"
+            git pull --rebase --autostash origin main
+            git push
+          fi
