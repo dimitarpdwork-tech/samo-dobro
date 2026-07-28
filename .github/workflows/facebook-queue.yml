@@ -14,16 +14,21 @@ name: Facebook post queue
 
 on:
   schedule:
-    # Every 3 hours. With the default max_per_run of 5 that is up to 40
-    # posts/day of drain capacity — comfortably more than the site publishes.
-    - cron: "40 */3 * * *"
+    # Every 6 hours. With the default max_per_run of 5 that is 20 posts/day
+    # of drain capacity — well above what the site actually publishes, while
+    # keeping the Page's posting rhythm unhurried. Frequency only controls how
+    # fast a backlog drains, not how much gets posted overall.
+    - cron: "40 */6 * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: facebook-queue
+  # Same group name as the `facebook` job in publish.yml. Concurrency groups
+  # are matched by name ACROSS workflows, so this is the shared lock that stops
+  # a scheduled drain and a post-merge run from posting the same article twice.
+  group: facebook-posting
   cancel-in-progress: false
 
 jobs:
