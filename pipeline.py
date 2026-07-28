@@ -474,77 +474,50 @@ CANDIDATES
 
 
 def build_writing_prompt(cfg: dict, story: dict, full_text: str | None, use_search: bool = False) -> str:
-    """Phase 2: write ONE article, ideally from the full source text. Uniqueness
-    rules are explicit so articles don't read as templated. The lede and
-    quick-facts rules exist so AI search/answer engines have a self-contained,
-    citable passage near the top of the page instead of only a narrative
-    opening — see the GEO section of the SEO audit. The added-value context
-    rule exists so articles aren't pure rewrites with nothing to distinguish
-    them from the wire source (the isBasedOn attribution-cannibalization
-    problem) — see the chat history for the reasoning."""
     source_block = (
         f"FULL SOURCE ARTICLE (write from this):\n{full_text}"
         if full_text else
         f"SOURCE SUMMARY (only this snippet is available):\n{clean_text(story.get('summary',''), 600)}"
     )
-    lede_rule = (
-        "- The FIRST paragraph MUST be a self-contained, answer-first passage of "
-        "approximately 140-160 words that fully conveys what happened, who it "
-        "involves, and why it matters — written so it could stand alone as a "
-        "quote or AI-generated summary without needing the rest of the article. "
-        "Vary its phrasing and angle story-to-story (lead with the outcome, a "
-        "striking detail, or the human stakes) but always make it complete on "
-        "its own."
-        if full_text else
-        "- Open with the single most important fact from the snippet, as a "
-        "self-contained sentence or two. Don't pad it toward 140-160 words if "
-        "the snippet doesn't support it — a short honest opening beats a "
-        "padded one."
-    )
-    if use_search:
+
+    if full_text:
+        lede_rule = (
+            "- Open with an answer-first first paragraph of roughly 80-110 words: "
+            "what happened, who was involved, where it happened, and the concrete positive outcome. "
+            "Do not stretch the paragraph if the facts do not support that length."
+        )
+        word_target = "250-340 words total"
+        support_rule = (
+            "- Add 1-2 short supporting paragraphs using concrete details from the source.\n"
+            "- Add ONE short 'why it matters' paragraph (roughly 50-90 words) ONLY if the source "
+            "supports a real significance, consequence, background, or human angle. If there is no "
+            "meaningful extra point to make, omit it instead of padding the story."
+        )
+    else:
+        lede_rule = (
+            "- Open with the single most important fact from the snippet in 1-2 clear sentences. "
+            "Do not pretend the snippet contains more detail than it does."
+        )
+        word_target = "140-200 words total"
+        support_rule = (
+            "- Add only the supporting details that are actually present in the snippet. "
+            "Do not add an analysis/opinion section and do not pad the article."
+        )
+
+    if use_search and full_text:
         context_rule = (
-            "- After the lede and supporting paragraph(s), add 1-2 MORE paragraphs of genuine added value. "
-            "This is the single most important part of the article for two purposes: giving the reader "
-            "something worth reading beyond the original story, and giving AI answer engines (ChatGPT, "
-            "Perplexity, Google AI Overviews, etc.) a self-contained passage worth citing when someone asks a "
-            "related question — this is how this article earns being credited as its own source rather than "
-            "just a rewrite.\n"
-            "- Use web search to verify real, specific context: the history or effort behind the event (who "
-            "has worked on this and for how long), the broader significance (what this means for the "
-            "environment/community/country beyond this one event), or how this compares to the situation "
-            "before. Only include facts you actually verified via search and are confident are real — never "
-            "invent a specific number, date, name, or program detail.\n"
-            "- Write this as a genuine CAUSAL explanation, not vague praise ('this is inspiring', 'this shows "
-            "progress'). Explain the actual mechanism or reason: why does this matter, what changes because "
-            "of it, what would be different without it. Make the passage self-contained — someone should be "
-            "able to read ONLY this part and come away with a complete, accurate answer to 'why does this "
-            "matter', without needing the rest of the article. Aim for roughly 100-160 words in this section.\n"
-            "- If you cite a specific external source for this added context, use exactly this syntax: "
-            "[link text](URL) — the ONLY citation format allowed. Do NOT use <cite> tags, footnotes, or any "
-            "other citation markup; this text is published directly on a website with no citation-rendering "
-            "system beyond that one link format — anything else shows up as broken, garbled text to readers."
+            "- You MAY add one short verified-context paragraph (roughly 60-100 words) when web search "
+            "finds genuinely useful background that helps explain why the story matters. Use only facts "
+            "you verified. If you cite an external source, use exactly [link text](URL). "
+            "Do not add context merely to make the article longer."
         )
     else:
         context_rule = (
-            "- After the lede and supporting paragraph(s), add 1-2 MORE paragraphs offering a genuine, argued "
-            "EDITORIAL OPINION about the story — not additional facts. This is what makes the piece worth "
-            "reading beyond the original story: a real point of view, not a restatement of what happened.\n"
-            "- Frame this explicitly as interpretation, not verified fact: use language like 'What stands out "
-            "here is...', 'The real significance may be...', 'This suggests...', 'One way to read this "
-            "is...'. Never state a new specific number, date, name, or program detail as if it were an "
-            "established fact — you have no way to verify it. An opinion can be debatable and that's fine; "
-            "a fabricated fact is not, which is exactly why this must stay opinion, not new claims.\n"
-            "- Make the opinion SPECIFIC and ARGUED, not generic praise. Take an actual position: what does "
-            "this story reveal about a broader pattern, tension, or shift? What would you push back on, or "
-            "add nuance to, if you were a thoughtful reader rather than just relaying the news? Avoid vague "
-            "uplift ('this is wonderful', 'this gives us hope') — argue something specific enough that a "
-            "reader could actually agree or disagree with it.\n"
-            "- Make the passage self-contained — someone should be able to read ONLY this part and "
-            "understand the actual argument being made, without needing the rest of the article. Aim for "
-            "roughly 100-160 words in this section."
+            "- Do NOT invent an editorial thesis, counterargument, generic praise, or broad social analysis. "
+            "The article should end when the useful facts and a source-supported significance are covered."
         )
-    word_target = "380-480 words total" if full_text else "180-230 words total (snippet is thin — keep the added-value part brief and general rather than padding)"
-    return f"""You are the editor of "{cfg['site_name']}", writing one good-news article in {cfg['language_name']}.
+
+    return f'''You are the editor of "{cfg['site_name']}", writing one concise good-news article in {cfg['language_name']}.
 
 HEADLINE OF THE STORY: {story['title']}
 SOURCE: {story['source']}
@@ -552,22 +525,22 @@ SOURCE: {story['source']}
 {source_block}
 
 Write an original article in {cfg['language_name']}. Rules:
-- Use ONLY facts present in the source above for the core summary. Never invent numbers, names, quotes, or dates.
-- Include 2-3 CONCRETE specific details from the source (a number, a place, a name, a circumstance) — this is what makes the piece real rather than generic.
+- Use ONLY facts present in the source above for the core story. Never invent numbers, names, quotes, dates, motives, rankings, or claims.
+- Include 2-4 CONCRETE details from the source when available: names, places, numbers, circumstances, actions or outcomes.
 {lede_rule}
-- After the lede, add 1-2 shorter paragraphs of supporting context or narrative from the source — don't just repeat the lede in different words.
+{support_rule}
 {context_rule}
-- Find the actual STORY beyond the headline — what does the full source reveal that the headline alone wouldn't tell someone?
-- Warm, human, concrete tone. Hopeful, never saccharine or clickbaity.
+- Find the actual story beyond the headline, but do not manufacture depth that is not there.
+- Warm, human, concrete tone. Positive without becoming sugary or promotional.
 - {word_target}.
 - Native-level {cfg['language_name']}. Never invent words. Check noun-adjective gender/number agreement. Never use Russian spellings or words.
+- Avoid repetitive AI phrases such as "това показва", "това е доказателство", "вдъхновяващ пример", unless genuinely necessary.
 
-Also extract 3-5 short "quick facts" — standalone phrases (not full sentences, under ~12 words each) pulling out the concrete who/what/where/when/how-much details from the source. These appear in a bullet box at the top of the article, so each one must be fully understandable on its own without reading the article body.
+Also extract 3-4 short "quick facts" — standalone phrases under ~12 words each.
 
-If the story is specifically tied to a particular Bulgarian city or town (not just "Bulgaria" broadly), include that city's name as one of the tags, in Bulgarian (e.g. "варна", "пловдив", "стара загора") — this is what lets readers browse news by their own city, so get it right whenever the source clearly names a specific place.
+If the story is specifically tied to a particular Bulgarian city or town, include that city's name as one of the tags, in Bulgarian. Add a city tag ONLY when the story itself is actually about that place — never infer a city from the source/publisher name.
 
-Respond using EXACTLY this plain-text format — nothing before or after it. Do NOT use JSON. This format exists specifically so that quotes, apostrophes, and other punctuation in your writing can never break parsing the way an unescaped quote inside a JSON string would:
-
+Respond using EXACTLY this plain-text format — nothing before or after it:
 ===HEADLINE===
 <max 75 chars, in {cfg['language_name']}>
 ===SLUG===
@@ -579,20 +552,16 @@ Respond using EXACTLY this plain-text format — nothing before or after it. Do 
 ===SUMMARY_SHORT===
 <max 160 chars teaser>
 ===BODY===
-<the article — first paragraph is the answer-first lede, with one fully blank line between each paragraph>
+<the concise article, with one fully blank line between paragraphs>
 ===QUICK_FACTS===
 <first fact>
 <second fact>
 <third fact>
 ===TAGS===
-<tag one, tag two, tag three — include the city tag here if applicable, per above>
+<tag one, tag two, tag three — include a city only when clearly supported by the story>
 ===IMAGE_QUERY===
-<2-4 words English, a concrete scene, action, or object — NEVER a scoreboard, chart, table, ranking list, or
-anything with readable text/numbers in it (image generation cannot render legible text and produces garbled
-nonsense when asked to). For abstract topics (rankings, statistics, policy), depict the concrete activity or
-setting instead — e.g. for a tennis rankings article, "tennis player serving court" not "tennis ranking board".
-Never a real person's name or a specific claimed location.>
-===END==="""
+<2-4 words English, a concrete scene, action, or object — NEVER a scoreboard, chart, table, ranking list, readable text/numbers, a real person's name, or a falsely claimed specific location>
+===END=>'''
 
 
 def parse_json_object(raw: str) -> dict | None:
