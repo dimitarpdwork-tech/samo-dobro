@@ -1,0 +1,166 @@
+name: Generate selected weekly roundup
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: weekly-roundup-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  generate-roundup:
+    if: >-
+      !github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/roundup ')
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate commenter and weekly issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "$AUTHOR_ASSOCIATION" in
+            OWNER|MEMBER|COLLABORATOR) ;;
+            *)
+              echo "Only the repository owner/member/collaborator may generate roundups."
+              exit 1
+              ;;
+          esac
+
+          HAS_LABEL="$(gh issue view "$ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --json labels \
+            --jq '[.labels[].name] | any(. == "weekly-roundup")')"
+
+          if [ "$HAS_LABEL" != "true" ]; then
+            echo "This is not a Weekly roundup brief issue."
+            exit 1
+          fi
+
+          STATE="$(gh issue view "$ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --json state \
+            --jq '.state')"
+
+          if [ "$STATE" != "OPEN" ]; then
+            echo "This weekly issue is already closed."
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          import os
+          import re
+
+          body = os.environ["COMMENT_BODY"].strip()
+          if not re.fullmatch(r"/roundup\s+[0-9,\s]+\s*", body, re.I):
+              raise SystemExit("Use /roundup 1 or /roundup 1 3 5")
+          PY
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download weekly issue body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh issue view "$ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --json body \
+            --jq '.body' > /tmp/dobrodelo-weekly-issue.md
+
+      - name: Generate selected roundup article(s)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          FAL_API_KEY: ${{ secrets.FAL_API_KEY }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python tools/publish_roundup.py \
+            --issue-body /tmp/dobrodelo-weekly-issue.md \
+            --command "$COMMENT_BODY"
+
+      - name: Open review PR
+        id: review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          SAVED="$(python3 - <<'PY'
+          import json
+          with open("roundup_result.json", encoding="utf-8") as f:
+              print(json.load(f).get("saved_count", 0))
+          PY
+          )"
+
+          echo "saved=$SAVED" >> "$GITHUB_OUTPUT"
+
+          if [ "$SAVED" = "0" ]; then
+            echo "No roundup article was generated."
+            exit 0
+          fi
+
+          tools/open_review_pr.sh weekly-roundup "weekly roundup"
+
+      - name: Report result and close issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          python3 - <<'PY' > /tmp/roundup-result.md
+          import json
+
+          with open("roundup_result.json", encoding="utf-8") as f:
+              result = json.load(f)
+
+          saved = result.get("saved") or []
+          failed = result.get("failed") or []
+
+          print(f"✅ Генерирани обзорни статии: **{len(saved)}**.")
+          print()
+          if saved:
+              print("Отворен е review PR. Провери го в Pull requests.")
+              for item in saved:
+                  print(f"- {item['title']} — {item['source_count']} включени истории")
+
+          if failed:
+              print()
+              print("Неуспели предложения:")
+              for item in failed:
+                  print(f"- #{item['number']}: {item['reason']}")
+          PY
+
+          gh issue comment "$ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body-file /tmp/roundup-result.md
+
+          if [ "${{ steps.review.outputs.saved }}" != "0" ]; then
+            gh issue close "$ISSUE_NUMBER" \
+              --repo "$REPOSITORY" \
+              --reason completed
+          fi
