@@ -279,21 +279,45 @@ jobs:
       - id: deployment
         uses: actions/deploy-pages@v4
 
-      # ---------------------------------------------------------------- facebook
+  # --------------------------------------------------------------- facebook
+
+  facebook:
+    # A SEPARATE job, with its own concurrency group — deliberately not the
+    # `pages` group used by the job above.
+    #
+    # facebook-queue.yml declares this SAME group name, so the scheduled drain
+    # and this post-merge run can never execute simultaneously. Without a
+    # shared lock, a merge landing near a scheduled run meant both jobs could
+    # check out a repo where an article still had fb_posted:false, and both
+    # would post it — a visible duplicate on the Page. Concurrency groups are
+    # matched by name across workflows, which is what makes this work.
+    needs: publish
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: facebook-posting
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
       - name: Post newly approved articles to Facebook
         # Fires ONLY on push-to-main — i.e. only after a human merges a review
-        # PR — never at write-time. Runs AFTER the Pages deploy so article URLs
-        # are already live when Facebook's crawler scrapes them; posting before
-        # deploy would make Facebook cache a 404 link preview. This ordering
-        # also means a Facebook failure can never block a deploy.
+        # PR — never at write-time. `needs: publish` means the Pages deploy has
+        # already finished, so article URLs are live when Facebook's crawler
+        # scrapes them; posting before deploy would make Facebook cache a 404
+        # link preview. It also means a Facebook failure cannot block a deploy.
         #
-        # Anything beyond facebook.max_per_run is left queued and picked up by
-        # facebook-queue.yml on its schedule. It is NOT picked up by a
-        # re-trigger of this workflow: pushes made with the default
-        # GITHUB_TOKEN deliberately do not trigger `on: push`, so the queue
-        # needs its own scheduled runner.
-        if: github.event_name == 'push'
+        # Anything beyond facebook.max_per_run is left queued for
+        # facebook-queue.yml. It is NOT picked up by a re-trigger of this
+        # workflow: pushes made with the default GITHUB_TOKEN deliberately do
+        # not trigger `on: push`, so the queue needs its own scheduled runner.
         env:
           FACEBOOK_PAGE_TOKEN: ${{ secrets.FACEBOOK_PAGE_TOKEN }}
           FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
@@ -306,7 +330,6 @@ jobs:
       - name: Commit Facebook bookkeeping (direct — no review needed)
         # fb_posted flags are dedup bookkeeping, not editorial content — same
         # reasoning as seen.json. Direct commit.
-        if: github.event_name == 'push'
         run: |
           git config user.name "good-news-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
