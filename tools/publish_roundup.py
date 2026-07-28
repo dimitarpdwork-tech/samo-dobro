@@ -84,7 +84,8 @@ def build_prompt(cfg: dict, option: dict, source_articles: list[dict]) -> str:
     blocks = []
 
     for index, article in enumerate(source_articles, 1):
-        url = option["articles"][index - 1]["url"]
+        base = cfg["base_url"].rstrip("/") + cfg.get("base_path", "").rstrip("/")
+        url = f'{base}/{cfg["article_prefix"]}/{article["slug"]}/'
         facts = "\n".join(f"- {fact}" for fact in (article.get("quick_facts") or []))
         blocks.append(
             f"""SOURCE ARTICLE {index}
@@ -175,7 +176,11 @@ def save_roundup(cfg: dict, option: dict, written: dict, source_articles: list[d
     if not body or not headline:
         raise ValueError("Claude response had no headline or body.")
 
-    source_urls = [item["url"] for item in option["articles"]]
+    base = cfg["base_url"].rstrip("/") + cfg.get("base_path", "").rstrip("/")
+    source_urls = [
+        f'{base}/{cfg["article_prefix"]}/{article["slug"]}/'
+        for article in source_articles
+    ]
     article = {
         "id": f"roundup-{suffix}-{now.strftime('%Y%m%d')}",
         "slug": slug,
