@@ -81,13 +81,6 @@ jobs:
         if: steps.existing.outputs.skip != 'true'
         run: chmod +x tools/*.sh
 
-      - name: Record dismissed candidates
-        # prepare_candidate_issue.py marks everything it did NOT shortlist as
-        # seen, so rejected stories from undated feeds don't come back for
-        # re-judging (and re-paying) tomorrow. Persist that here.
-        if: steps.existing.outputs.skip != 'true'
-        run: tools/commit_seen.sh
-
       - name: Open editorial issue
         if: steps.existing.outputs.skip != 'true'
         env:
@@ -101,3 +94,13 @@ jobs:
             --title "$TITLE" \
             --label daily-candidates \
             --body-file candidate_issue.md
+
+      - name: Record dismissed candidates
+        # Runs AFTER the issue exists, deliberately. prepare_candidate_issue.py
+        # marks everything it did NOT shortlist as seen so rejected stories from
+        # undated feeds don't come back for re-judging (and re-paying) tomorrow
+        # — but if `gh issue create` had failed with this step already done, the
+        # dismissed candidates would be burned with no shortlist to show for it.
+        # Persisting last means a failed issue creation costs nothing.
+        if: steps.existing.outputs.skip != 'true'
+        run: tools/commit_seen.sh
