@@ -21,11 +21,16 @@ import base64
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+import sys
+
+# Allow scripts launched as `python tools/<script>.py` to import pipeline.py
+# from the repository root in GitHub Actions and local runs.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import pipeline
 
-
-ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "candidate_issue.md"
 
 
@@ -189,25 +194,6 @@ def main() -> int:
         "site": cfg.get("site_name", "Добро Дело"),
         "items": selected,
     }
-
-    # Everything the model saw but did NOT shortlist is dismissed here and
-    # recorded as seen. Without this, candidates from feeds that expose no
-    # publication date (the scraped gov.bg / BNR listings, which fetch_feed
-    # can't date-filter) were re-collected and re-sent to the selection model
-    # every single day, paying to re-judge the same rejected stories
-    # indefinitely. Only the shortlisted ones stay unseen — publish_selected.py
-    # marks those once the human has actually decided.
-    shortlisted_ids = {item["candidate"].get("id") for item in selected}
-    dismissed = 0
-    for cand in candidates:
-        cid = cand.get("id")
-        if cid and cid not in shortlisted_ids and cid not in seen_ids:
-            seen["ids"].append(cid)
-            seen_ids.add(cid)
-            dismissed += 1
-    if dismissed:
-        pipeline.save_seen(seen)
-        print(f"[shortlist] marked {dismissed} non-shortlisted candidate(s) as seen.")
 
     encoded = base64.urlsafe_b64encode(
         json.dumps(queue, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
