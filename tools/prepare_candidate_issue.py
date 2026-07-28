@@ -21,11 +21,16 @@ import base64
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+import sys
+
+# Allow scripts launched as `python tools/<script>.py` to import pipeline.py
+# from the repository root in GitHub Actions and local runs.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import pipeline
 
-
-ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "candidate_issue.md"
 
 
