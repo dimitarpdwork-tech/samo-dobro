@@ -58,6 +58,36 @@
   "newsletter_path": "byuletin",
   "submit_path": "izprati-dobra-novina",
   "digest_path": "dnes",
+  "candidate_ranking": {
+    "_comment": "Cheap local pre-filter that runs BEFORE any paid call. Its job is to RANK, not to censor: only the multi-word admin phrases below are ever hard-dropped. Single negative words merely lower a score, because 'Полицаи спасиха щъркел от пожара' and '87 пожара - без нито един загинал' are both good news that a naive keyword blocklist would have thrown away (verified against the published archive).",
+    "max_candidates": 40,
+    "cap_per_source": 3,
+    "cap_per_municipal_source": 1,
+    "max_municipal_total": 12,
+    "priority_sources": [
+      "БТА", "БНР — Живот", "Дневник", "24 часа", "Actualno",
+      "Animal Rescue Sofia", "Спасителен център за диви животни — Зелени Балкани",
+      "Министерски съвет", "Народно събрание"
+    ],
+    "admin_phrases": [
+      "обществена поръчка", "заседание на общински съвет",
+      "график за сметосъбиране", "публичен търг", "процедура по възлагане",
+      "временно прекъсване на водоподаване", "обявява конкурс за длъжност",
+      "дневен ред на заседание", "проект на наредба"
+    ],
+    "negative_keywords": [
+      "загина", "загинал", "смърт", "смъртн", "катастроф", "убийств", "убит",
+      "арестув", "обвинен", "война", "военн", "бедстви", "земетресени",
+      "наводнени", "жертви", "ранени", "насили", "жестокост", "измама",
+      "корупц", "скандал", "почина", "отровен", "бракониер"
+    ],
+    "positive_keywords": [
+      "спас", "осинов", "дарен", "доброволц", "награда", "награди", "откри",
+      "възстанов", "безплат", "излекув", "изцеле", "рекорд", "успех",
+      "стипенди", "върнат в природата", "пуснат на свобода", "помог",
+      "подкреп", "обнови", "нов парк", "първо място", "шампион"
+    ]
+  },
   "animal_keywords": [
     "куче", "котк", "котен", "животн", "приют", "осинов",
     "ветеринар", "щъркел", "лешояд", "костенурк", "птиц",
