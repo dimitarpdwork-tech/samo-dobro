@@ -275,6 +275,10 @@
       "url": "https://www.parliament.bg/feed/news"
     },
     {
+      "name": "Animal Rescue Sofia",
+      "url": "https://arsofia.com/category/news-bg/feed/"
+    },
+    {
       "name": "Спасителен център за диви животни — Зелени Балкани",
       "type": "scrape",
       "url": "https://greenbalkans-wrbc.org/novini",
