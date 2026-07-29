@@ -441,6 +441,170 @@ def fetch_scraped_listing(source: dict) -> list[dict]:
     return out
 
 
+# ---------------------------------------------------------------- ranking
+
+def _kw_hits(words: list[str], hay: str) -> list[str]:
+    """Match each keyword as a PREFIX anchored at a word boundary.
+
+    Prefix, so Bulgarian inflection is covered by one entry (\bспас catches
+    спасен/спасиха/спасяват). Boundary-anchored, so a keyword can't fire from
+    inside a longer unrelated word — without it "търг" matches Търговище and
+    Търговска, which is exactly how a naive version of this filter rejected
+    real published articles."""
+    return [w for w in words if re.search(r"\b" + re.escape(w), hay)]
+
+
+def is_animal_story(cfg: dict, cand: dict) -> bool:
+    """True if a candidate's title/summary matches any configured animal
+    keyword. Cheap substring test, run over every candidate before any paid
+    call. Only FLAGS a story — never selects or publishes one."""
+    keywords = cfg.get("animal_keywords") or []
+    if not keywords:
+        return False
+    haystack = f'{cand.get("title", "")} {cand.get("summary", "")}'.lower()
+    return any(k in haystack for k in keywords)
+
+
+def score_candidate(cfg: dict, cand: dict) -> tuple[int, bool, list[str]]:
+    """Cheap local relevance score. Returns (score, hard_drop, reasons).
+
+    DESIGN NOTE — this ranks, it does not censor. Only the multi-word
+    admin_phrases cause a hard drop; single negative words merely subtract.
+    That distinction was established empirically against the published
+    archive: a hard negative-word blocklist would have rejected 12 genuinely
+    good articles, including a police stork rescue (killed by "пожар"), an
+    organ-donation story that saved four lives (killed by "смърт"), and
+    "87 fires in 24 hours - not a single death" (killed by both). Positive
+    signals in the same text are exactly what distinguishes those from real
+    bad news, so they are allowed to outweigh the negatives."""
+    rank_cfg = cfg.get("candidate_ranking") or {}
+    hay = f'{cand.get("title", "")} {cand.get("summary", "")}'.lower()
+    reasons = []
+
+    admin = _kw_hits(rank_cfg.get("admin_phrases") or [], hay)
+    if admin:
+        return -100, True, [f"admin: {admin[0]}"]
+
+    score = 0
+    pos = _kw_hits(rank_cfg.get("positive_keywords") or [], hay)
+    neg = _kw_hits(rank_cfg.get("negative_keywords") or [], hay)
+    if pos:
+        score += min(len(pos) * 3, 9)
+        reasons.append(f"+{min(len(pos)*3,9)} positive")
+    if neg:
+        score -= min(len(neg) * 3, 9)
+        reasons.append(f"-{min(len(neg)*3,9)} negative")
+    if is_animal_story(cfg, cand):
+        score += 4
+        reasons.append("+4 animal")
+
+    name = cand.get("source", "")
+    if name in (rank_cfg.get("priority_sources") or []):
+        score += 3
+        reasons.append("+3 priority source")
+    if name.startswith("Община"):
+        # Not a penalty on quality — there are simply ~55 municipal feeds and
+        # only a handful of national ones, so without this a busy municipality
+        # crowds out everything else on volume alone.
+        score -= 2
+        reasons.append("-2 municipal")
+    return score, False, reasons
+
+
+_TITLE_STOP = {"на", "в", "за", "и", "с", "от", "по", "до", "се", "е", "да", "the", "a"}
+
+
+def _title_tokens(title: str) -> set:
+    words = re.findall(r"\w+", (title or "").lower(), re.UNICODE)
+    return {w for w in words if len(w) > 3 and w not in _TITLE_STOP}
+
+
+def dedupe_candidates(candidates: list[dict]) -> list[dict]:
+    """Collapse the same story arriving from several feeds.
+
+    Two passes: exact URL, then title similarity (Jaccard over content words).
+    A national wire story routinely appears via БТА, БНР, 24 часа, Actualno AND
+    the municipality's own site; sending all five to the model costs tokens and
+    wastes shortlist slots on one event. Candidates are assumed pre-sorted by
+    desirability, so the FIRST occurrence wins and later duplicates drop."""
+    out, seen_urls, kept_tokens = [], set(), []
+    for cand in candidates:
+        url = (cand.get("link") or "").rstrip("/").lower()
+        if url and url in seen_urls:
+            continue
+        tokens = _title_tokens(cand.get("title", ""))
+        duplicate = False
+        if tokens:
+            for prev in kept_tokens:
+                union = tokens | prev
+                if union and len(tokens & prev) / len(union) >= 0.6:
+                    duplicate = True
+                    break
+        if duplicate:
+            continue
+        if url:
+            seen_urls.add(url)
+        if tokens:
+            kept_tokens.append(tokens)
+        out.append(cand)
+    return out
+
+
+def rank_candidates(cfg: dict, candidates: list[dict]) -> list[dict]:
+    """Score, deduplicate and cap candidates before anything is paid for.
+
+    Replaces a plain `candidates[:60]`, which kept the first 60 in CONFIG
+    ORDER — so with ~65 feeds the national outlets sitting at the end of the
+    list (24 часа, Дневник) could never reach the shortlist at all, while a
+    single chatty municipality near the top filled the quota. Ranking makes
+    every feed compete on merit instead of position."""
+    rank_cfg = cfg.get("candidate_ranking") or {}
+    if not rank_cfg:
+        return candidates[:60]  # ranking not configured — previous behaviour
+
+    max_total = int(rank_cfg.get("max_candidates", 40))
+    cap_source = int(rank_cfg.get("cap_per_source", 3))
+    cap_muni = int(rank_cfg.get("cap_per_municipal_source", 1))
+    max_muni_total = int(rank_cfg.get("max_municipal_total", 12))
+
+    scored, dropped_admin = [], 0
+    for cand in candidates:
+        score, hard_drop, reasons = score_candidate(cfg, cand)
+        if hard_drop:
+            dropped_admin += 1
+            continue
+        cand["_score"] = score
+        cand["_score_reasons"] = reasons
+        scored.append(cand)
+
+    scored.sort(key=lambda c: c["_score"], reverse=True)
+    before_dedupe = len(scored)
+    scored = dedupe_candidates(scored)
+
+    per_source, muni_total, capped = {}, 0, []
+    for cand in scored:
+        name = cand.get("source", "")
+        is_muni = name.startswith("Община")
+        cap = cap_muni if is_muni else cap_source
+        if per_source.get(name, 0) >= cap:
+            continue
+        if is_muni and muni_total >= max_muni_total:
+            continue
+        per_source[name] = per_source.get(name, 0) + 1
+        if is_muni:
+            muni_total += 1
+        capped.append(cand)
+        if len(capped) >= max_total:
+            break
+
+    print(f"  [rank] {len(candidates)} collected -> {dropped_admin} admin-dropped, "
+          f"{before_dedupe - len(scored)} duplicates merged, "
+          f"{len(capped)} sent to the shortlist "
+          f"(score range {capped[0]['_score']} to {capped[-1]['_score']})"
+          if capped else f"  [rank] {len(candidates)} collected -> nothing survived filtering")
+    return capped
+
+
 def collect_candidates(cfg: dict, seen_ids: set, window_override: int | None = None,
                         ignore_seen: bool = False) -> list[dict]:
     candidates, errors = [], []
@@ -459,8 +623,8 @@ def collect_candidates(cfg: dict, seen_ids: set, window_override: int | None = N
             print(f"  [feed] {feed['name']}: FAILED ({exc})")
     if errors:
         print(f"  [note] {len(errors)} feed(s) failed — the run continues without them.")
-    # newest sources first, capped so the prompt stays small and cheap
-    return candidates[:60]
+    # Rank/dedupe/cap locally before anything is paid for — see rank_candidates.
+    return rank_candidates(cfg, candidates)
 
 
 def load_recent_headlines(days: int = 10, limit: int = 60) -> list[str]:
