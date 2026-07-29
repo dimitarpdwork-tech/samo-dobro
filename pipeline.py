@@ -146,8 +146,9 @@ def load_seen() -> dict:
             seen = json.load(f)
         seen.setdefault("ids", [])
         seen.setdefault("dismissed", [])
+        seen.setdefault("animal_hold", {})
         return seen
-    return {"ids": [], "dismissed": []}
+    return {"ids": [], "dismissed": [], "animal_hold": {}}
 
 
 def all_seen_ids(seen: dict) -> set:
@@ -157,7 +158,45 @@ def all_seen_ids(seen: dict) -> set:
     Always use this rather than set(seen["ids"]) — 'ids' is capped and evicts
     old entries, so a story dismissed by hand would otherwise come back once it
     aged out, which is exactly what /dismiss exists to prevent."""
+    # NOTE: animal_hold is deliberately NOT included. Held items must remain
+    # collectable so they keep being offered until a human acts on them.
     return set(seen.get("ids", [])) | set(seen.get("dismissed", []))
+
+
+def hold_animal_candidate(seen: dict, cand_id: str) -> None:
+    """Park an unshortlisted animal candidate instead of marking it seen.
+
+    Animal sources are sparse — Green Balkans publishes roughly monthly — so
+    auto-marking a whole batch as seen after one run where the model happened
+    not to shortlist them destroys a month of the best material silently. Held
+    items keep reappearing until the editor either publishes or /dismiss-es
+    them."""
+    hold = seen.setdefault("animal_hold", {})
+    hold.setdefault(cand_id, datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+
+
+def expire_animal_holds(cfg: dict, seen: dict) -> int:
+    """Safety valve. Without one, an item sitting on a scraped listing page
+    would be re-offered forever. After animal_hold_days it graduates to the
+    normal seen list. Returns how many expired."""
+    days = int((cfg.get("candidate_ranking") or {}).get("animal_hold_days", 45))
+    hold = seen.get("animal_hold") or {}
+    if not hold:
+        return 0
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    expired = []
+    for cand_id, first_seen in list(hold.items()):
+        try:
+            ts = datetime.strptime(first_seen, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        except Exception:
+            ts = cutoff  # unparseable -> expire it
+        if ts <= cutoff:
+            expired.append(cand_id)
+    for cand_id in expired:
+        hold.pop(cand_id, None)
+        if cand_id not in seen.get("ids", []):
+            seen.setdefault("ids", []).append(cand_id)
+    return len(expired)
 
 
 def save_seen(seen: dict) -> None:
@@ -168,6 +207,9 @@ def save_seen(seen: dict) -> None:
     # already rejected, which is the bug this list exists to fix.
     if seen.get("dismissed"):
         seen["dismissed"] = sorted(set(seen["dismissed"]))
+    # animal_hold is a dict {candidate_id: first_seen_iso}; left uncapped for
+    # the same reason as dismissed — it is small and bounded by expiry.
+    seen.setdefault("animal_hold", {})
     seen["last_run"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     SEEN_FILE.parent.mkdir(parents=True, exist_ok=True)
     # Atomic write: write to a temp file, then os.replace() into place — the
@@ -203,10 +245,17 @@ def merge_seen_with_remote(remote_path: str) -> None:
     merged_dismissed = sorted(
         set(local.get("dismissed", [])) | set(remote.get("dismissed", []))
     )
+    merged_hold = dict(remote.get("animal_hold") or {})
+    for cand_id, first_seen in (local.get("animal_hold") or {}).items():
+        # Keep the EARLIEST timestamp, so a concurrent run can't quietly reset
+        # an item's expiry clock and keep it circulating indefinitely.
+        if cand_id not in merged_hold or first_seen < merged_hold[cand_id]:
+            merged_hold[cand_id] = first_seen
     # save_seen() always overwrites last_run with the current wall-clock
     # time regardless of what's in the dict passed to it, so there's no
     # need to reconcile the two input timestamps here.
-    save_seen({"ids": merged_ids, "dismissed": merged_dismissed})
+    save_seen({"ids": merged_ids, "dismissed": merged_dismissed,
+               "animal_hold": merged_hold})
     print(f"  [seen] merged: {len(merged_ids)} ids, "
           f"{len(merged_dismissed)} permanently dismissed "
           f"(local had {len(local.get('ids', []))}, remote had {len(remote.get('ids', []))})")
@@ -377,7 +426,25 @@ def fetch_feed(feed: dict, window_hours: int) -> list[dict]:
     return out
 
 
-def fetch_scraped_listing(source: dict) -> list[dict]:
+_URL_DATE_RE = re.compile(r"/(20\d{2})/(\d{1,2})(?:/(\d{1,2}))?/")
+
+
+def _date_from_url(url: str):
+    """Pull a publication date out of a URL when the CMS embeds one
+    (/2024/05/10/slug). Returns None when there is no date to read — most
+    sites don't embed one, so this is a bonus signal, never a guarantee."""
+    m = _URL_DATE_RE.search(url or "")
+    if not m:
+        return None
+    try:
+        year, month = int(m.group(1)), int(m.group(2))
+        day = int(m.group(3) or 1)
+        return datetime(year, month, min(day, 28), tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
+def fetch_scraped_listing(source: dict, window_hours_for_scrape: int = 720) -> list[dict]:
     """Fetch a non-RSS listing page and extract candidate articles by
     matching link hrefs against a configured URL substring (source['link_pattern'])
     — deliberately NOT CSS-selector-based, since URL structure tends to survive
@@ -397,6 +464,12 @@ def fetch_scraped_listing(source: dict) -> list[dict]:
     #                     are sentences. Defaults to the existing 10.
     excludes = source.get("link_exclude") or []
     min_title_chars = int(source.get("min_title_chars", 10))
+    # Scraped listings carry no publication dates, so nothing was stopping a
+    # story from 2025 sitting on page 1 from being offered as today's news.
+    # Two cheap defences: read a date out of the URL when the CMS puts one
+    # there (WordPress-style /YYYY/MM/DD/), and cap how far down a
+    # reverse-chronological listing we read.
+    max_items = int(source.get("max_items", 8))
     out = []
     seen_hrefs = set()
     for page_url in pages:
@@ -420,6 +493,9 @@ def fetch_scraped_listing(source: dict) -> list[dict]:
                 continue
             if any(x in href for x in excludes):
                 continue
+            url_date = _date_from_url(href)
+            if url_date and url_date < datetime.now(timezone.utc) - timedelta(hours=window_hours_for_scrape):
+                continue
             if href in seen_hrefs:
                 continue
             title = clean_text(re.sub(r"<[^>]+>", " ", inner), 200)
@@ -431,6 +507,8 @@ def fetch_scraped_listing(source: dict) -> list[dict]:
                 # headline text, and this must not block that one.
                 continue
             seen_hrefs.add(href)
+            if len(out) >= max_items:
+                break
             out.append({
                 "id": entry_id(href, title),
                 "title": title,
@@ -505,8 +583,13 @@ def score_candidate(cfg: dict, cand: dict) -> tuple[int, bool, list[str]]:
         score -= min(len(neg) * 3, 9)
         reasons.append(f"-{min(len(neg)*3,9)} negative")
     if is_animal_story(cfg, cand):
-        score += 4
-        reasons.append("+4 animal")
+        # Weighted high on purpose. Animal stories are a small percentage of
+        # general news volume, so without a strong thumb on the scale they
+        # rarely survive into a 40-slot shortlist pool against the daily flood
+        # of festivals and municipal announcements.
+        score += int((cfg.get("candidate_ranking") or {}).get("animal_bonus", 6))
+        reasons.append("+{} animal".format(
+            int((cfg.get("candidate_ranking") or {}).get("animal_bonus", 6))))
 
     # Bulgarian relevance. The whole site is Bulgarian good news, but nothing
     # else in this scorer knew that — so a wire story like "Japanese scientist
