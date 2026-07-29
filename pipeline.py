@@ -320,7 +320,17 @@ def is_sensitive_candidate(candidate: dict) -> bool:
     )
 
 def fetch_feed(feed: dict, window_hours: int) -> list[dict]:
-    """Fetch one RSS feed and return recent entries as candidate dicts."""
+    """Fetch one RSS feed and return recent entries as candidate dicts.
+
+    A feed may override the global window with its own "window_hours". That
+    exists for low-frequency sources — an animal shelter posting once a month
+    is invisible inside a 48h window except on the one day it publishes, so a
+    single skipped or failed run loses the story permanently. Widening the
+    window for those feeds costs nothing: seen.json still guarantees each item
+    is only ever considered once, and prepare_candidate_issue.py marks
+    everything it didn't shortlist as seen, so a wide window drains to zero
+    after the first run rather than re-offering the same backlog daily."""
+    window_hours = int(feed.get("window_hours", window_hours))
     resp = http_get(
         feed["url"], timeout=15,
         accept="application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
