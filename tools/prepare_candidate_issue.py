@@ -34,6 +34,22 @@ import pipeline
 OUTPUT = ROOT / "candidate_issue.md"
 
 
+def is_animal_story(cfg: dict, cand: dict) -> bool:
+    """True if a candidate's title/summary matches any configured animal
+    keyword. Deliberately a cheap substring test on lowercased text rather than
+    anything clever: it runs over every candidate before the paid model call,
+    and Bulgarian inflection means prefix matching ("осинов" catching
+    осиновяване / осиновен / осиновиха) beats exact word matching here.
+
+    This only FLAGS a story for the editor model — it never selects or
+    publishes anything on its own."""
+    keywords = cfg.get("animal_keywords") or []
+    if not keywords:
+        return False
+    haystack = f'{cand.get("title", "")} {cand.get("summary", "")}'.lower()
+    return any(k in haystack for k in keywords)
+
+
 def build_editorial_prompt(
     cfg: dict,
     candidates: list[dict],
@@ -47,8 +63,12 @@ def build_editorial_prompt(
         )
 
     category_ids = ", ".join(cfg["categories"].keys())
+    # Animal stories are pre-flagged so the editor model can see them at a
+    # glance. The flag is a hint about topic, NOT an instruction to select —
+    # the quality bar in the prompt still applies to every flagged item.
     candidate_lines = "\n".join(
-        f'{i}. [{c["source"]}] {c["title"]} — '
+        f'{i}. {"[ANIMAL PRIORITY] " if is_animal_story(cfg, c) else ""}'
+        f'[{c["source"]}] {c["title"]} — '
         f'{pipeline.clean_text(c.get("summary", ""), 300)}'
         for i, c in enumerate(candidates)
     )
@@ -64,6 +84,25 @@ Prefer:
 - strong human, community, nature, science, culture or sports achievements;
 - stories with enough substance to become a useful article;
 - variety across topics instead of many nearly identical stories.
+
+ANIMAL STORIES — GIVE THESE HIGH PRIORITY:
+Readers respond strongly to animal stories, and they are currently
+under-represented. Give clear preference to stories about animals that were
+rescued, treated, adopted, rehomed or released back into the wild; the
+volunteers, vets, shelters and organisations who do that work; and adoption
+drives or exhibitions where a reader can concretely help a named animal.
+Candidates already flagged [ANIMAL PRIORITY] are topic matches — judge each on
+merit, then favour it over a weaker non-animal story.
+If at least 3 good animal stories are available, include up to 5 of them.
+
+BUT — the quality bar does not drop for animals:
+- do NOT shortlist every lost-pet notice, missing-animal appeal or urgent
+  donation plea;
+- an animal story still needs a verifiable positive OUTCOME, a strong human
+  story, or a concrete adoption opportunity;
+- reject animal cruelty, death, poisoning or rescue-failure stories even when
+  the organisation's response was admirable — the outcome is what matters.
+A shortlist full of appeals for help is a failure, not a success.
 
 Reject:
 - war, crime, accidents, deaths, scandals, party politics, elections;
@@ -106,7 +145,7 @@ def main() -> int:
 
     cfg = pipeline.load_config()
     seen = pipeline.load_seen()
-    seen_ids = set(seen.get("ids", []))
+    seen_ids = pipeline.all_seen_ids(seen)
 
     print(f"[shortlist] collecting recent unseen candidates…")
     candidates = pipeline.collect_candidates(cfg, seen_ids)
@@ -217,6 +256,16 @@ def main() -> int:
         "```text",
         "/publish none",
         "```",
+        "",
+        "Ако някоя история не ти харесва и **не искаш да я виждаш повече**:",
+        "",
+        "```text",
+        "/dismiss 3",
+        "```",
+        "",
+        "`/dismiss` записва отказа **веднага** и списъкът остава отворен. "
+        "Ползвай го, когато една и съща история продължава да се появява — "
+        "затварянето на issue-то само по себе си не записва отказ.",
         "",
         "---",
         "",
