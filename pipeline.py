@@ -108,12 +108,31 @@ def load_config() -> dict:
 def load_seen() -> dict:
     if SEEN_FILE.exists():
         with open(SEEN_FILE, encoding="utf-8-sig") as f:
-            return json.load(f)
-    return {"ids": []}
+            seen = json.load(f)
+        seen.setdefault("ids", [])
+        seen.setdefault("dismissed", [])
+        return seen
+    return {"ids": [], "dismissed": []}
+
+
+def all_seen_ids(seen: dict) -> set:
+    """Every id that should be excluded from new candidate collection:
+    the rolling 'ids' window PLUS the permanent 'dismissed' list.
+
+    Always use this rather than set(seen["ids"]) — 'ids' is capped and evicts
+    old entries, so a story dismissed by hand would otherwise come back once it
+    aged out, which is exactly what /dismiss exists to prevent."""
+    return set(seen.get("ids", [])) | set(seen.get("dismissed", []))
 
 
 def save_seen(seen: dict) -> None:
     seen["ids"] = seen["ids"][-4000:]  # keep the file small
+    # 'dismissed' is deliberately NOT capped. It only grows through explicit
+    # human /dismiss commands (a handful a day at most), and its whole purpose
+    # is to be permanent — capping it would resurrect stories the editor
+    # already rejected, which is the bug this list exists to fix.
+    if seen.get("dismissed"):
+        seen["dismissed"] = sorted(set(seen["dismissed"]))
     seen["last_run"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     SEEN_FILE.parent.mkdir(parents=True, exist_ok=True)
     # Atomic write: write to a temp file, then os.replace() into place — the
@@ -144,11 +163,17 @@ def merge_seen_with_remote(remote_path: str) -> None:
         remote = {"ids": []}
     local = load_seen()
     merged_ids = sorted(set(local.get("ids", [])) | set(remote.get("ids", [])))[-4000:]
+    # Dismissals are permanent and must survive the merge uncapped, or a
+    # concurrent run could drop a rejection the editor made by hand.
+    merged_dismissed = sorted(
+        set(local.get("dismissed", [])) | set(remote.get("dismissed", []))
+    )
     # save_seen() always overwrites last_run with the current wall-clock
     # time regardless of what's in the dict passed to it, so there's no
     # need to reconcile the two input timestamps here.
-    save_seen({"ids": merged_ids})
-    print(f"  [seen] merged: {len(merged_ids)} ids "
+    save_seen({"ids": merged_ids, "dismissed": merged_dismissed})
+    print(f"  [seen] merged: {len(merged_ids)} ids, "
+          f"{len(merged_dismissed)} permanently dismissed "
           f"(local had {len(local.get('ids', []))}, remote had {len(remote.get('ids', []))})")
 
 
@@ -318,6 +343,15 @@ def fetch_scraped_listing(source: dict) -> list[dict]:
     items make it past the dedup filter in practice."""
     pages = source.get("pages") or [source["url"]]
     pattern = source["link_pattern"]
+    # Optional extra filters, for org sites whose article URLs are bare
+    # root-level slugs with no distinguishing path segment. On those, a
+    # link_pattern broad enough to catch articles also catches every nav link,
+    # so two cheap discriminators are available:
+    #   link_exclude    — substrings that mark a URL as navigation/boilerplate
+    #   min_title_chars — nav labels are short ("Дари сега"); real headlines
+    #                     are sentences. Defaults to the existing 10.
+    excludes = source.get("link_exclude") or []
+    min_title_chars = int(source.get("min_title_chars", 10))
     out = []
     seen_hrefs = set()
     for page_url in pages:
@@ -331,12 +365,14 @@ def fetch_scraped_listing(source: dict) -> list[dict]:
             href, inner = m.group(1), m.group(2)
             if pattern not in href:
                 continue
+            if any(x in href for x in excludes):
+                continue
             if href.startswith("/"):
                 href = urljoin(page_url, href)
             if href in seen_hrefs:
                 continue
             title = clean_text(re.sub(r"<[^>]+>", " ", inner), 200)
-            if not title or len(title) < 10:
+            if not title or len(title) < min_title_chars:
                 # Too short to be a real headline — likely an icon/image-only
                 # link (a common pattern: thumbnail linked before the headline
                 # text). Deliberately NOT marking href as seen here — a later
@@ -570,7 +606,7 @@ Respond using EXACTLY this plain-text format — nothing before or after it:
 <second fact>
 <third fact>
 ===TAGS===
-<tag one, tag two, tag three — include a city only when clearly supported by the story>
+<tag one, tag two, tag three — include a city only when clearly supported by the story; ALWAYS include the tag "животни" when the story is genuinely about animals (rescue, treatment, adoption, release, shelters, wildlife), so these stories are collectable>
 ===IMAGE_QUERY===
 <2-4 words English, a concrete scene, action, or object — NEVER a scoreboard, chart, table, ranking list, readable text/numbers, a real person's name, or a falsely claimed specific location>
 ===END=>'''
@@ -1367,7 +1403,7 @@ def recover_missed(cfg: dict, hours: int = 72) -> None:
     saved, new_urls = run_two_phase(cfg, candidates, seen, max_new)
     ping_indexnow(cfg, new_urls)
     for c in candidates:
-        if c["id"] not in set(seen["ids"]):
+        if c["id"] not in all_seen_ids(seen):
             seen["ids"].append(c["id"])
     save_seen(seen)
     print(f"\nRecovery done. {saved} stor{'y' if saved == 1 else 'ies'} recovered and published.")
@@ -1458,7 +1494,7 @@ def run_two_phase(cfg: dict, candidates: list[dict], seen: dict, max_new: int) -
     print(f"  [phase 1] selected {len(picks)} — now writing each from full source…")
 
     saved, new_urls = 0, []
-    seen_ids = set(seen["ids"])
+    seen_ids = all_seen_ids(seen)
     context_search = cfg.get("context_search", False)
     search_tools = [{"type": "web_search_20250305", "name": "web_search"}] if context_search else None
     for pick in picks:
@@ -2089,7 +2125,7 @@ def main() -> None:
         return
 
     seen = load_seen()
-    seen_ids = set(seen["ids"])
+    seen_ids = all_seen_ids(seen)
     print(f"[{cfg['site_name']}] collecting candidates…")
     candidates = collect_candidates(cfg, seen_ids)
     print(f"  {len(candidates)} fresh candidates")
@@ -2113,7 +2149,7 @@ def main() -> None:
     ping_indexnow(cfg, new_urls)
 
     # Mark rejected candidates as seen too, so we never re-pay to re-judge them.
-    seen_now = set(seen["ids"])
+    seen_now = all_seen_ids(seen)
     for c in candidates:
         if c["id"] not in seen_now:
             seen["ids"].append(c["id"])
