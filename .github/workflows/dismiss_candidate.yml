@@ -1,0 +1,140 @@
+name: Dismiss editorial candidates
+
+# Handles `/dismiss 3` (or `/dismiss 3 5 7`) on an open daily-candidates issue.
+#
+# Records the rejection in seen.json IMMEDIATELY, so a story you keep skipping
+# stops reappearing — without writing anything, without closing the issue, and
+# without depending on a later publish run succeeding. See the docstring in
+# tools/dismiss_candidate.py for why /publish alone isn't sufficient.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  # Same key shape as publish-selected.yml so a /dismiss and a /publish on the
+  # SAME issue can't both mutate seen.json at once.
+  group: editorial-publish-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  dismiss:
+    if: >-
+      !github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/dismiss ')
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate commenter and issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "$AUTHOR_ASSOCIATION" in
+            OWNER|MEMBER|COLLABORATOR) ;;
+            *)
+              echo "Only the repository owner/member/collaborator may dismiss candidates."
+              exit 1
+              ;;
+          esac
+
+          HAS_LABEL="$(gh issue view "$ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --json labels \
+            --jq '[.labels[].name] | any(. == "daily-candidates")')"
+
+          if [ "$HAS_LABEL" != "true" ]; then
+            echo "This is not a DobroDelo daily-candidates issue."
+            exit 1
+          fi
+
+          STATE="$(gh issue view "$ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --json state \
+            --jq '.state')"
+
+          if [ "$STATE" != "OPEN" ]; then
+            echo "This shortlist is already closed."
+            exit 1
+          fi
+
+          # Validate the command shape before doing any work, so a typo fails
+          # loudly instead of dismissing the wrong story.
+          python3 - <<'PY'
+          import os, re, sys
+          body = os.environ["COMMENT_BODY"].strip()
+          if not re.fullmatch(r"/dismiss\s+[0-9,\s]+\s*", body, re.I):
+              print("Use /dismiss 3, /dismiss 3 5 7 or /dismiss 3,5,7", file=sys.stderr)
+              raise SystemExit(2)
+          PY
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download shortlist issue body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh issue view "$ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --json body \
+            --jq '.body' > /tmp/dobrodelo-candidate-issue.md
+
+      - name: Record the dismissal
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          python tools/dismiss_candidate.py \
+            --issue-body-file /tmp/dobrodelo-candidate-issue.md \
+            --command "$COMMENT_BODY"
+
+      - name: Make helper scripts executable
+        run: chmod +x tools/*.sh
+
+      - name: Commit seen-state directly to main
+        run: tools/commit_seen.sh
+
+      - name: Report back on the issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          if [ -f dismiss_result.md ]; then
+            gh issue comment "$ISSUE_NUMBER" \
+              --repo "$REPOSITORY" \
+              --body-file dismiss_result.md
+          fi
+
+      - name: Report failure on the issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body "❌ Отхвърлянето не беше записано. Виж [лога]($RUN_URL). Списъкът остава непроменен."
