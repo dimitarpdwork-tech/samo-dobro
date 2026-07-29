@@ -24,6 +24,16 @@
   "fallback_to_pexels": true,
   "founding_date": "2026-07-01",
   "tag_aliases": {
+    "zhivotni": "zhivotni",
+    "jivotni": "zhivotni",
+    "animals": "zhivotni",
+    "kucheta": "zhivotni",
+    "kotki": "zhivotni",
+    "priyut": "zhivotni",
+    "osinovyavane": "zhivotni",
+    "divi-zhivotni": "zhivotni",
+    "ptitsi": "zhivotni",
+    "spasenie": "zhivotni",
     "sofia": "sofiya",
     "bulgaria": "balgariya",
     "koncert": "kontsert",
@@ -48,6 +58,13 @@
   "newsletter_path": "byuletin",
   "submit_path": "izprati-dobra-novina",
   "digest_path": "dnes",
+  "animal_keywords": [
+    "куче", "котк", "котен", "животн", "приют", "осинов",
+    "ветеринар", "щъркел", "лешояд", "костенурк", "птиц",
+    "делфин", "мечк", "магаре", "зоопарк", "кастрац", "кастрир",
+    "диви животни", "бездомни животни", "гнездо",
+    "върнат в природата", "пуснат на свобода", "птичи"
+  ],
   "known_cities": {
     "sofiya": "София",
     "plovdiv": "Пловдив",
@@ -256,6 +273,23 @@
     {
       "name": "Народно събрание",
       "url": "https://www.parliament.bg/feed/news"
+    },
+    {
+      "name": "Спасителен център за диви животни — Зелени Балкани",
+      "type": "scrape",
+      "url": "https://greenbalkans-wrbc.org/novini",
+      "link_pattern": "greenbalkans-wrbc.org/",
+      "min_title_chars": 35,
+      "link_exclude": [
+        "/en/", "/page/", "?page=", "?year=", "/novini", "/news-3-13",
+        "/about-us", "/our-team", "/staff", "/volunteers", "/results",
+        "/annual-reports", "/publications", "/awards", "/media",
+        "/watch-live", "/activities", "/animal-in-trouble", "/vet-cares",
+        "/breeding-programme", "/release-back-into-the-wild", "/education",
+        "/help-us", "/make-a-donation", "/donation", "/payment",
+        "/adopt-an-animal", "/become-a-part", "/donors", "/partners",
+        "/contacts", "/wild-animal-in-distress", "/images/", "/templates/"
+      ]
     },
     {
       "name": "Министерски съвет",
