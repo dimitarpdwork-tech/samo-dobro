@@ -508,6 +508,19 @@ def score_candidate(cfg: dict, cand: dict) -> tuple[int, bool, list[str]]:
         score += 4
         reasons.append("+4 animal")
 
+    # Bulgarian relevance. The whole site is Bulgarian good news, but nothing
+    # else in this scorer knew that — so a wire story like "Japanese scientist
+    # wins award" scored 9 on positive words plus the БТА priority bonus and
+    # could outrank a local shelter story. Foreign news is not banned (the
+    # archive has plenty), it just must not outrank the local material that
+    # readers actually share in city groups.
+    locality = rank_cfg.get("locality_keywords") or []
+    if not locality:
+        locality = ["българ", "bulgaria"] + [c.lower() for c in (cfg.get("known_cities") or {}).values()]
+    if _kw_hits(locality, hay):
+        score += 5
+        reasons.append("+5 Bulgarian")
+
     name = cand.get("source", "")
     if name in (rank_cfg.get("priority_sources") or []):
         score += 3
@@ -606,6 +619,28 @@ def rank_candidates(cfg: dict, candidates: list[dict]) -> list[dict]:
         capped.append(cand)
         if len(capped) >= max_total:
             break
+
+    # Backfill. Per-source caps exist to stop one chatty feed dominating a
+    # BIG pool. On a quiet day the pool is small and the same caps just starve
+    # the shortlist — which is how a run ended up offering stories from only
+    # four sources. If capping left us short of the target, relax it and take
+    # the next-best candidates in score order.
+    if len(capped) < max_total:
+        chosen = {c.get("id") for c in capped}
+        for cand in scored:
+            if len(capped) >= max_total:
+                break
+            if cand.get("id") in chosen:
+                continue
+            capped.append(cand)
+            chosen.add(cand.get("id"))
+
+    by_source = {}
+    for c in capped:
+        by_source[c.get("source", "?")] = by_source.get(c.get("source", "?"), 0) + 1
+    top = ", ".join(f"{n}×{k[:28]}" for k, n in
+                    sorted(by_source.items(), key=lambda kv: -kv[1])[:6])
+    print(f"  [rank] sources in shortlist pool: {len(by_source)} — {top}")
 
     print(f"  [rank] {len(candidates)} collected -> {dropped_admin} admin-dropped, "
           f"{before_dedupe - len(scored)} duplicates merged, "
