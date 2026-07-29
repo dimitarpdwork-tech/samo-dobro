@@ -89,17 +89,36 @@ def parse_selection(command: str, item_count: int) -> list[int]:
     return selected
 
 
-def mark_entire_shortlist_seen(seen: dict, queue: dict) -> None:
+def mark_entire_shortlist_seen(cfg: dict, seen: dict, queue: dict) -> None:
+    """Everything the editor saw and didn't pick counts as decided, so it does
+    not come back tomorrow — EXCEPT animal candidates, which are parked in
+    animal_hold and keep being offered until published or /dismiss-ed.
+
+    This function is what actually destroyed a batch of Green Balkans stories:
+    a single /publish marked the entire shortlist seen, including animal items
+    the editor had simply not chosen that day. With a source that publishes
+    monthly, that is weeks of the best material gone in one command."""
     ids = list(seen.get("ids", []))
     present = set(ids)
+    held = 0
 
     for item in queue["items"]:
-        candidate_id = item.get("candidate", {}).get("id")
-        if candidate_id and candidate_id not in present:
-            ids.append(candidate_id)
-            present.add(candidate_id)
+        candidate = item.get("candidate", {}) or {}
+        candidate_id = candidate.get("id")
+        if not candidate_id or candidate_id in present:
+            continue
+        if pipeline.is_animal_story(cfg, candidate):
+            pipeline.hold_animal_candidate(seen, candidate_id)
+            held += 1
+            continue
+        ids.append(candidate_id)
+        present.add(candidate_id)
 
     seen["ids"] = ids
+    expired = pipeline.expire_animal_holds(cfg, seen)
+    if held or expired:
+        print(f"  [editorial] {held} animal candidate(s) held for re-offer; "
+              f"{expired} hold(s) expired.")
 
 
 def main() -> int:
@@ -217,7 +236,7 @@ def main() -> int:
 
     # The human has made the editorial decision. Everything not selected is
     # deliberately treated as dismissed so it doesn't keep reappearing.
-    mark_entire_shortlist_seen(seen, queue)
+    mark_entire_shortlist_seen(cfg, seen, queue)
     pipeline.save_seen(seen)
 
     if saved and hasattr(pipeline, "write_pr_description"):
