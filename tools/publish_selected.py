@@ -114,7 +114,7 @@ def main() -> int:
 
     cfg = pipeline.load_config()
     seen = pipeline.load_seen()
-    already_seen = set(seen.get("ids", []))
+    already_seen = pipeline.all_seen_ids(seen)
 
     selected_items = [queue["items"][n - 1] for n in selected_numbers]
 
