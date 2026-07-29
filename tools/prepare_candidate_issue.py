@@ -289,6 +289,36 @@ def main() -> int:
         ]
     )
 
+    # Record the editorial outcome for everything the model considered.
+    #
+    # Non-animal candidates that were not shortlisted are marked seen so the
+    # selection call isn't paid for again tomorrow on stories already judged
+    # and passed over.
+    #
+    # Animal candidates are the exception: they are PARKED in animal_hold
+    # instead. Animal sources publish rarely — Green Balkans roughly monthly —
+    # so burning a whole batch because one run didn't shortlist them throws
+    # away weeks of the strongest material. Held items keep being re-offered
+    # until they are published or explicitly /dismiss-ed.
+    shortlisted_ids = {item["candidate"].get("id") for item in selected}
+    marked = held = 0
+    for cand in candidates:
+        cid = cand.get("id")
+        if not cid or cid in shortlisted_ids or cid in seen_ids:
+            continue
+        if pipeline.is_animal_story(cfg, cand):
+            pipeline.hold_animal_candidate(seen, cid)
+            held += 1
+            continue
+        seen["ids"].append(cid)
+        seen_ids.add(cid)
+        marked += 1
+    expired = pipeline.expire_animal_holds(cfg, seen)
+    if marked or held or expired:
+        pipeline.save_seen(seen)
+    print(f"[shortlist] {marked} passed-over candidate(s) marked seen; "
+          f"{held} animal candidate(s) held for re-offer; {expired} hold(s) expired.")
+
     OUTPUT.write_text("\n".join(lines), encoding="utf-8")
     print(f"[shortlist] wrote {OUTPUT.name} with {len(selected)} options.")
     return 0
