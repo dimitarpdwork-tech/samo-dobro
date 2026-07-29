@@ -89,9 +89,13 @@ BROWSER_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "bg-BG,bg;q=0.9,en-US;q=0.8,en;q=0.7",
     "Accept-Encoding": "gzip, deflate",
-    "Connection": "keep-alive",
     "Upgrade-Insecure-Requests": "1",
 }
+# Deliberately NOT setting "Connection": urllib3 owns connection lifecycle, and
+# Connection is a hop-by-hop header (illegal in HTTP/2, rejected by some
+# fronting proxies). Setting it by hand made gov.bg answer 421 Misdirected
+# Request on a URL that had been fetching fine — a regression introduced
+# alongside the browser-profile fix, caught by the next --check-feeds run.
 
 
 def http_get(url: str, timeout: int = 15, accept: str | None = None) -> "requests.Response":
