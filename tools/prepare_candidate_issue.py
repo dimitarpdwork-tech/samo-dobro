@@ -34,21 +34,8 @@ import pipeline
 OUTPUT = ROOT / "candidate_issue.md"
 
 
-def is_animal_story(cfg: dict, cand: dict) -> bool:
-    """True if a candidate's title/summary matches any configured animal
-    keyword. Deliberately a cheap substring test on lowercased text rather than
-    anything clever: it runs over every candidate before the paid model call,
-    and Bulgarian inflection means prefix matching ("осинов" catching
-    осиновяване / осиновен / осиновиха) beats exact word matching here.
-
-    This only FLAGS a story for the editor model — it never selects or
-    publishes anything on its own."""
-    keywords = cfg.get("animal_keywords") or []
-    if not keywords:
-        return False
-    haystack = f'{cand.get("title", "")} {cand.get("summary", "")}'.lower()
-    return any(k in haystack for k in keywords)
-
+# is_animal_story lives in pipeline.py so the local ranking scorer and this
+# shortlist builder can never drift apart on what counts as an animal story.
 
 def build_editorial_prompt(
     cfg: dict,
@@ -67,7 +54,7 @@ def build_editorial_prompt(
     # glance. The flag is a hint about topic, NOT an instruction to select —
     # the quality bar in the prompt still applies to every flagged item.
     candidate_lines = "\n".join(
-        f'{i}. {"[ANIMAL PRIORITY] " if is_animal_story(cfg, c) else ""}'
+        f'{i}. {"[ANIMAL PRIORITY] " if pipeline.is_animal_story(cfg, c) else ""}'
         f'[{c["source"]}] {c["title"]} — '
         f'{pipeline.clean_text(c.get("summary", ""), 300)}'
         for i, c in enumerate(candidates)
