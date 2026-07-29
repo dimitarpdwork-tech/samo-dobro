@@ -64,11 +64,43 @@ API_VERSION = "2023-06-01"
 BOT_UA = "DobroDeloBot/1.0 (+https://dobrodelo.com/za-nas/; redaktsia@dobrodelo.com)"
 BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
+# A COMPLETE browser header profile for the fallback, not just a browser UA.
+#
+# This distinction matters and was the cause of a real, large failure: an
+# earlier version swapped only the User-Agent on retry while still sending
+# just two headers. A request announcing itself as Chrome but omitting
+# Accept-Language, Accept-Encoding and the rest is a well-known bot
+# signature — real Chrome never does that — and many WAFs reject it. The
+# tell in the logs was ~37 feeds answering 415 "Unsupported Media Type" to a
+# GET, which is meaningless for a bodyless request (415 is about a request
+# BODY's Content-Type) and therefore proof that a security layer, not the
+# CMS, was replying. The same URLs opened fine in a normal browser.
+#
+# Also note the Accept header here is the ordinary browser one rather than a
+# feed-specific "application/rss+xml, ..." list. An Accept header advertising
+# only XML types is itself a scraper signature to some WAFs, and the browser
+# Accept still includes application/xml, so feeds are served correctly.
+#
+# Accept-Encoding deliberately omits "br": brotli decoding needs an optional
+# extra package, and claiming support we might not have would yield
+# undecodable bytes rather than a clean error.
+BROWSER_HEADERS = {
+    "User-Agent": BROWSER_UA,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "bg-BG,bg;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+}
+
 
 def http_get(url: str, timeout: int = 15, accept: str | None = None) -> "requests.Response":
-    """GET with the identifying bot UA first; on any failure (network error
-    or HTTP >= 400) retry once with a browser UA. Raises on final failure so
-    callers keep their existing error handling."""
+    """GET with the identifying bot UA first; on any failure (network error or
+    HTTP >= 400) retry once as a full browser. Raises on final failure so
+    callers keep their existing error handling.
+
+    The retry sends the entire BROWSER_HEADERS profile — swapping only the
+    User-Agent is not enough, see the comment on that constant."""
     headers = {"User-Agent": BOT_UA}
     if accept:
         headers["Accept"] = accept
@@ -77,8 +109,7 @@ def http_get(url: str, timeout: int = 15, accept: str | None = None) -> "request
         resp.raise_for_status()
         return resp
     except Exception:
-        headers["User-Agent"] = BROWSER_UA
-        resp = requests.get(url, timeout=timeout, headers=headers)
+        resp = requests.get(url, timeout=timeout, headers=dict(BROWSER_HEADERS))
         resp.raise_for_status()
         return resp
 
@@ -363,12 +394,18 @@ def fetch_scraped_listing(source: dict) -> list[dict]:
         page_html = resp.text
         for m in re.finditer(r'<a\s[^>]*href="([^"]+)"[^>]*>(.*?)</a>', page_html, re.DOTALL | re.IGNORECASE):
             href, inner = m.group(1), m.group(2)
+            # Resolve to an absolute URL BEFORE matching. Listing pages very
+            # often use relative hrefs ("/article-slug"), so a link_pattern
+            # containing the hostname would never match one and the source
+            # would silently yield zero items — exactly what the Green Balkans
+            # source did on its first live run ("0 recent entries" despite the
+            # page being reachable). Matching after resolution also makes
+            # host-based patterns work regardless of how the site writes links.
+            href = urljoin(page_url, href)
             if pattern not in href:
                 continue
             if any(x in href for x in excludes):
                 continue
-            if href.startswith("/"):
-                href = urljoin(page_url, href)
             if href in seen_hrefs:
                 continue
             title = clean_text(re.sub(r"<[^>]+>", " ", inner), 200)
