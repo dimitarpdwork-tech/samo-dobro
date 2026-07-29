@@ -276,7 +276,7 @@
     },
     {
       "name": "Animal Rescue Sofia",
-      "url": "https://arsofia.com/category/news-bg/feed/"
+      "url": "https://arsofia.com/feed/"
     },
     {
       "name": "Спасителен център за диви животни — Зелени Балкани",
@@ -320,16 +320,8 @@
       "url": "https://visitbanite.bg/feed/"
     },
     {
-      "name": "Община Банско",
-      "url": "https://bansko.bg/feed/"
-    },
-    {
       "name": "Община Белене",
       "url": "https://belene.bg/feed/"
-    },
-    {
-      "name": "Община Белица",
-      "url": "https://obshtinabelitsa.com/?format=feed&type=rss"
     },
     {
       "name": "Община Белово",
@@ -348,10 +340,6 @@
       "url": "https://www.bozhurishte.bg/feed/"
     },
     {
-      "name": "Община Болярово",
-      "url": "https://www.bolyarovo.bg/feed/"
-    },
-    {
       "name": "Община Борован",
       "url": "https://www.borovan.bg/feed"
     },
@@ -362,10 +350,6 @@
     {
       "name": "Община Варна",
       "url": "https://varna.bg/bg/rss"
-    },
-    {
-      "name": "Община Велики Преслав",
-      "url": "https://velikipreslav.bg/wp/feed"
     },
     {
       "name": "Община Велинград",
