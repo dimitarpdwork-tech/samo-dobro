@@ -16,6 +16,7 @@ Static site, free hosting, no servers.
              │
              ▼
     GitHub Issue: "📰 Кандидати"       ← you comment: /publish 1 3 6
+             │                            (or /dismiss 4 to kill one for good)
              │
              ▼
     tools/publish_selected.py          ← writes ONLY the chosen stories,
@@ -45,6 +46,7 @@ the selection output is tiny.
 | `config.json` | Everything editable: feeds, colours, copy, categories, cities, model |
 | `tools/prepare_candidate_issue.py` | Builds the daily shortlist issue |
 | `tools/publish_selected.py` | Writes only what you picked |
+| `tools/dismiss_candidate.py` | Permanently rejects a shortlist candidate (`/dismiss <n>`) |
 | `tools/reject_article.py` | Removes one article from a review PR (`/reject <slug>`) |
 | `tools/backlog_integrity.py` | Audits historical source attribution and city tags |
 | `tools/weekly_roundup.py` | Editorial brief for a human-written weekly roundup |
@@ -59,13 +61,24 @@ the selection output is tiny.
 | `candidate-shortlist.yml` | daily 13:17 UTC + manual | Opens the shortlist issue. Skips if one is still open. |
 | `publish-selected.yml` | `/publish …` comment | Writes the chosen stories, opens the review PR, closes the issue. |
 | `publish.yml` | manual + push to main | One-off maintenance modes; builds and deploys; posts to Facebook. |
+| `dismiss-candidate.yml` | `/dismiss <n>` comment | Permanently rejects a candidate; issue stays open. |
 | `reject-article.yml` | `/reject <slug>` comment | Removes one article from an open review PR. |
 | `facebook-queue.yml` | every 3h | Drains Facebook posts deferred by `max_per_run`. |
 | `backlog-integrity.yml` | manual | Audits source attribution; can open a fix PR. |
 | `weekly-roundup.yml` | manual | Opens a weekly editorial brief issue. |
 
-Only owners/members/collaborators can run `/publish` or `/reject` — both
-workflows check `author_association` before doing anything.
+Only owners/members/collaborators can run `/publish`, `/dismiss` or `/reject` —
+all three workflows check `author_association` before doing anything.
+
+### Why `/dismiss` exists
+
+Shortlisted candidates are only marked seen at the *end* of a successful
+`/publish`. If the writing step fails, or you just close the issue, nothing is
+recorded — so a story you keep skipping keeps coming back. `/dismiss 4` records
+the rejection immediately and permanently, and leaves the issue open.
+
+Dismissals go into `seen.json`'s `dismissed` list, which — unlike the rolling
+`ids` window — is never capped or evicted. A dismissal is forever.
 
 ## Setup
 
@@ -112,6 +125,14 @@ Set a hard monthly spend cap in the Anthropic Console.
 - **Editorial taste** — `build_editorial_prompt()` in
   `tools/prepare_candidate_issue.py` (what gets shortlisted) and
   `build_writing_prompt()` in `pipeline.py` (how it's written).
+- **Animal stories** — `animal_keywords` in `config.json` flags candidates as
+  `[ANIMAL PRIORITY]` before the shortlist call, and the shortlist prompt gives
+  them clear preference. The prompt deliberately still rejects lost-pet notices
+  and donation appeals: an animal story needs a real outcome, not just a plea.
+  Animal articles get the `животни` tag, aliased to the `zhivotni` slug.
+- **Scraping org sites** — a `scrape` feed can set `link_exclude` (URL
+  substrings that mark navigation) and `min_title_chars`, for sites whose
+  article URLs are bare root-level slugs.
 - **Look** — colours and fonts in `config.json`; layout and CSS in `build.py`.
 - **City hubs** — `known_cities` in `config.json`; a city gets a page at
   `MIN_CITY_ARTICLES` (3) articles. Cities are served *only* by
