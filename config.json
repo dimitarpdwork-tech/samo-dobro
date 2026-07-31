@@ -58,6 +58,17 @@
   "newsletter_path": "byuletin",
   "submit_path": "izprati-dobra-novina",
   "digest_path": "dnes",
+  "timezone": "Europe/Sofia",
+  "publishing_schedule": {
+    "_comment": "Spaces a batch approved in one /publish across the day instead of dropping it all at once. The first article goes live immediately; each later one waits interval_minutes. A slot falling outside quiet_hours (local time, per the timezone setting) moves to the next morning, so approving six stories at 21:00 doesn't publish the last at 02:00. Set quiet_hours to null to publish around the clock.",
+    "enabled": true,
+    "interval_minutes": 60,
+    "first_immediate": true,
+    "quiet_hours": {
+      "earliest_hour": 8,
+      "latest_hour": 22
+    }
+  },
   "candidate_ranking": {
     "_comment": "Cheap local pre-filter that runs BEFORE any paid call. Its job is to RANK, not to censor: only the multi-word admin phrases below are ever hard-dropped. Single negative words merely lower a score, because 'Полицаи спасиха щъркел от пожара' and '87 пожара - без нито един загинал' are both good news that a naive keyword blocklist would have thrown away (verified against the published archive).",
     "animal_bonus": 6,
