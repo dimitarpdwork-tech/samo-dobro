@@ -1323,6 +1323,23 @@ def ping_indexnow(cfg: dict, urls: list[str]) -> None:
 FB_GRAPH = "https://graph.facebook.com/v25.0"
 
 
+def _url_is_live(cfg: dict, article: dict) -> bool:
+    """True if an article's public URL actually resolves right now.
+
+    Used only for scheduled articles, immediately before announcing them, so
+    a slow or delayed rebuild can never turn into a permanently cached 404
+    preview on the Facebook Page. Any network failure returns False: skipping
+    a post costs an hour, a bad post is forever."""
+    base = cfg["base_url"].rstrip("/") + cfg.get("base_path", "").rstrip("/")
+    url = f'{base}/{cfg["article_prefix"]}/{article["slug"]}/'
+    try:
+        resp = requests.get(url, timeout=15, headers={"User-Agent": BOT_UA,
+                                                      "Cache-Control": "no-cache"})
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
 def post_new_articles_to_facebook(cfg: dict) -> None:
     """Share newly approved articles on the site's Facebook Page.
 
@@ -1377,6 +1394,16 @@ def post_new_articles_to_facebook(cfg: dict) -> None:
             # and Facebook caches that empty 404 preview for the URL more or
             # less permanently — the same failure already hit here with
             # WebP og:images. It gets posted by a later run instead.
+            continue
+        if a.get("publish_at") and not _url_is_live(cfg, a):
+            # The embargo has passed by the clock, but the scheduled rebuild
+            # may not have deployed yet: the site rebuild runs at :00/:15/:30/:45
+            # and this queue at :40, so depending on which minute /publish was
+            # run, Facebook can reach an article's slot BEFORE the deploy that
+            # publishes it. Trusting the timestamp alone would post a link to a
+            # 404. Checking the real URL costs one request and removes the race
+            # entirely; the article is simply posted by the next hourly run.
+            print(f"  [wait] {a.get('headline','?')[:60]} — page not deployed yet")
             continue
         try:
             published = datetime.strptime(a["published"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
