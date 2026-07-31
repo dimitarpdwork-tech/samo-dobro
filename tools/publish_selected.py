@@ -153,7 +153,16 @@ def main() -> int:
         else None
     )
 
-    for human_number, item in zip(selected_numbers, selected_items):
+    # Stagger the batch. Slots are computed up front from the number of
+    # SELECTED items so the spacing reflects the editor's choice; items that
+    # later fail safety or writing checks simply leave a gap in the schedule,
+    # which is harmless.
+    slots = pipeline.compute_publish_slots(cfg, len(selected_items))
+    if len(slots) > 1:
+        print(f"[editorial] staggering {len(slots)} article(s): "
+              + ", ".join(d.strftime("%H:%M") for d in slots) + " UTC")
+
+    for slot_index, (human_number, item) in enumerate(zip(selected_numbers, selected_items)):
         cand = item["candidate"]
 
         # An item might have been published through another route since the issue was created.
@@ -221,7 +230,9 @@ def main() -> int:
             )
             continue
 
-        url = pipeline.save_one_written(cfg, written, cand, seen)
+        url = pipeline.save_one_written(
+            cfg, written, cand, seen, publish_at=slots[slot_index]
+        )
         if not url:
             reason = "article save validation failed"
             failed.append(
