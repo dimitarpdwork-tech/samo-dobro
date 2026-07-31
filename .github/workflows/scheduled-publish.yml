@@ -17,7 +17,18 @@ name: Publish scheduled articles
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    # Explicit off-peak minutes rather than "*/15". Two reasons, both from
+    # GitHub's own documented behaviour:
+    #   1. "*/15" fires at :00, and the top of the hour is the single most
+    #      contended slot on the shared scheduler — GitHub explicitly advises
+    #      scheduling away from it to reduce delay.
+    #   2. :00/:15/:30/:45 are the minutes almost every other repo on the
+    #      platform picks, so they queue behind each other.
+    # Observed here: this workflow on "*/15" produced ONE run in two hours,
+    # while the hourly Facebook queue added around the same time reached
+    # sixteen. Scheduled runs are best-effort and never guaranteed, so treat
+    # lateness as normal and use "Run workflow" when something must go out now.
+    - cron: "8,23,38,53 * * * *"
   workflow_dispatch:
 
 permissions:
