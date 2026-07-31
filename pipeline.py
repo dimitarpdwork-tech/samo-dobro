@@ -29,6 +29,7 @@ import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -1370,6 +1371,13 @@ def post_new_articles_to_facebook(cfg: dict) -> None:
             continue  # a broken file is build.py's problem, not this step's
         if a.get("fb_posted"):
             continue
+        if not is_live(a):
+            # Scheduled, but not on the site yet. Posting the link now would
+            # make Facebook's crawler fetch a URL build.py has not created,
+            # and Facebook caches that empty 404 preview for the URL more or
+            # less permanently — the same failure already hit here with
+            # WebP og:images. It gets posted by a later run instead.
+            continue
         try:
             published = datetime.strptime(a["published"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         except (KeyError, TypeError, ValueError):
@@ -1744,10 +1752,83 @@ def recover_missed(cfg: dict, hours: int = 72) -> None:
           "already-published story (the guard prevents most, but check).")
 
 
-def save_one_written(cfg: dict, written: dict, cand: dict, seen: dict) -> str | None:
-    """Save a single already-written article (two-phase output). Returns its URL, or None."""
+# ------------------------------------------------------- staggered publishing
+
+def compute_publish_slots(cfg: dict, count: int, start: datetime | None = None) -> list[datetime]:
+    """Return `count` publication times, spaced by publishing_schedule.interval_minutes.
+
+    A batch approved in one /publish would otherwise land on the site all at
+    once: five articles sharing a timestamp, four of them buried below the
+    fold within seconds of going live. Staggering gives each story its own
+    slot at the top of the homepage.
+
+    The first slot is `now` when first_immediate is true, so approving a batch
+    still produces something visible straight away.
+
+    Quiet hours: a slot that would land outside [earliest_hour, latest_hour]
+    local time is pushed to `earliest_hour` the following morning. Without
+    this, approving six stories at 20:00 would publish the last one at 01:00
+    to nobody. Set "quiet_hours" to null in config to disable.
+    """
+    sched = cfg.get("publishing_schedule") or {}
+    interval = int(sched.get("interval_minutes", 60))
+    first_immediate = bool(sched.get("first_immediate", True))
+    now = start or datetime.now(timezone.utc)
+
+    quiet = sched.get("quiet_hours")
+    tz = ZoneInfo(cfg.get("timezone", "Europe/Sofia")) if quiet else None
+    earliest = int((quiet or {}).get("earliest_hour", 8))
+    latest = int((quiet or {}).get("latest_hour", 22))
+
+    slots: list[datetime] = []
+    cursor = now if first_immediate else now + timedelta(minutes=interval)
+    for _ in range(count):
+        if tz is not None:
+            local = cursor.astimezone(tz)
+            if local.hour >= latest:
+                # Too late in the evening — resume tomorrow morning.
+                nxt = (local + timedelta(days=1)).replace(
+                    hour=earliest, minute=local.minute % 60, second=0, microsecond=0)
+                cursor = nxt.astimezone(timezone.utc)
+            elif local.hour < earliest:
+                nxt = local.replace(hour=earliest, second=0, microsecond=0)
+                cursor = nxt.astimezone(timezone.utc)
+        slots.append(cursor)
+        cursor = cursor + timedelta(minutes=interval)
+    return slots
+
+
+def is_live(article: dict, now: datetime | None = None) -> bool:
+    """True if an article's embargo (publish_at) has passed, or it has none.
+
+    Anything reading article files for a PUBLIC-facing purpose — the Facebook
+    poster above all — must gate on this. Announcing a link before build.py
+    has made the page exist means Facebook scrapes a 404 and caches that empty
+    preview for the URL permanently."""
+    raw = article.get("publish_at")
+    if not raw:
+        return True
+    try:
+        embargo = datetime.strptime(raw, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return True  # unparseable embargo must never hide an article forever
+    return (now or datetime.now(timezone.utc)) >= embargo
+
+
+def save_one_written(cfg: dict, written: dict, cand: dict, seen: dict,
+                     publish_at: datetime | None = None) -> str | None:
+    """Save a single already-written article (two-phase output). Returns its URL, or None.
+
+    publish_at staggers a batch: see compute_publish_slots. Note that the
+    article's `published` field is set to the SAME value, not to write time.
+    A story that becomes visible at 18:15 must say 18:15 — stamping it with
+    the 16:15 moment the batch was written would put a four-hour-old date on
+    something a reader is watching appear, leave all five articles sharing
+    one timestamp (the exact 'looks fake' problem staggering exists to fix),
+    and hand Google News a datePublished predating the URL's existence.
+    """
     default_cat = next(iter(cfg["categories"]))
-    now = datetime.now(timezone.utc)
+    now = publish_at or datetime.now(timezone.utc)
     body = (written.get("body") or "").strip()
     # Defensive cleanup: strip any stray <cite>...</cite> tags the model might
     # emit when context_search is on (same trained-habit issue as the guide
@@ -1783,6 +1864,11 @@ def save_one_written(cfg: dict, written: dict, cand: dict, seen: dict) -> str | 
         "sensitive_topic": bool(cand.get("_sensitive_topic")),
         "lang": cfg["lang"],
     }
+    # Only record an embargo when there is one. An article going live now
+    # gets no publish_at at all, so the common case stays clean and the
+    # field always means 'still waiting'.
+    if publish_at and publish_at > datetime.now(timezone.utc) + timedelta(seconds=30):
+        article["publish_at"] = publish_at.strftime("%Y-%m-%dT%H:%M:%SZ")
     photo = get_article_photo(cfg, written, slug)
     if photo:
         article.update(photo)
@@ -1918,8 +2004,12 @@ def rewrite_articles(cfg: dict, limit: int | None = None, force: bool = False) -
         if art.get("id", "").startswith("seed") or (art.get("rewritten") and not force):
             skipped += 1
             continue
-        # Never rewrite the special anniversary / pinned pieces.
-        if art.get("cat_unlock") or art.get("pin_until") or art.get("publish_at"):
+        # Never rewrite the special anniversary / pinned pieces, or an
+        # article still waiting on its embargo. Note the is_live() check
+        # rather than a bare publish_at test: now that ordinary staggered
+        # articles carry publish_at, a bare test would permanently exclude
+        # every scheduled article from rewrites long after it went live.
+        if art.get("cat_unlock") or art.get("pin_until") or not is_live(art):
             skipped += 1
             continue
         src_url = art.get("source_url")
