@@ -14,11 +14,15 @@ name: Facebook post queue
 
 on:
   schedule:
-    # Every 6 hours. With the default max_per_run of 5 that is 20 posts/day
-    # of drain capacity — well above what the site actually publishes, while
-    # keeping the Page's posting rhythm unhurried. Frequency only controls how
-    # fast a backlog drains, not how much gets posted overall.
-    - cron: "40 */6 * * *"
+    # Hourly, at :40. This has to be at least as frequent as
+    # publishing_schedule.interval_minutes (60), or Facebook falls behind the
+    # site: an article goes live at 18:15 and its post would wait for a drain
+    # run hours later. Running hourly against an hourly stagger means each run
+    # finds exactly the one article that just went live.
+    #
+    # The poster skips anything still embargoed (pipeline.is_live), so a
+    # frequent cadence can never announce a page that does not exist yet.
+    - cron: "40 * * * *"
   workflow_dispatch:
 
 permissions:
