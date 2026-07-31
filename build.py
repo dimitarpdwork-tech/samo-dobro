@@ -762,22 +762,32 @@ def cookie_banner(site) -> str:
 
 
 def truncate_title(title: str, max_len: int = 60) -> str:
-    """Truncate a rendered <title> tag to a search-engine-friendly length
-    WITHOUT touching the actual on-page headline — this only affects what
-    appears in the <title> element and search results, never the H1 users
-    actually read. Preserves the ' · SiteName' suffix intact and only
-    shortens the part before it, since the suffix is short and valuable for
-    brand recognition in SERPs. Found via a real Bing scan that 94% of
-    article titles exceeded 60 chars (median 75) — this is systemic, from
-    long headlines plus the site-name suffix, not an isolated few pages."""
+    """Keep a rendered <title> near the width search engines display, WITHOUT
+    throwing away words.
+
+    The previous version amputated the headline itself — 'Морски орел е
+    пациент №2026 в Спасителния це… · Добро Дело' — which is the wrong trade.
+    Title length is a DISPLAY limit, not a ranking limit: engines simply cut
+    the visible text, but they still read the whole tag. Cutting words out of
+    the source removes them from what the page can ever be found for, and on
+    a 13-character suffix budget that was costing roughly a quarter of every
+    headline, precisely the specific nouns (city names, subjects) a small site
+    has any chance of ranking for.
+
+    So: when the full string is too long, drop the ' · SiteName' suffix and
+    keep the headline whole. The brand is on the page, in the logo, in the
+    schema, and engines routinely append or rewrite site names themselves.
+    Only if the bare headline is still absurdly long (>90) is it trimmed, and
+    then on a word boundary rather than mid-word."""
     if len(title) <= max_len:
         return title
-    if " · " in title:
-        main, sep, suffix = title.rpartition(" · ")
-        budget = max_len - len(suffix) - len(sep) - 1  # -1 for the ellipsis
-        if budget > 20:  # only truncate the headline if a reasonable amount survives
-            return main[:budget].rstrip() + "…" + sep + suffix
-    return title[:max_len - 1].rstrip() + "…"
+    main = title.rpartition(" · ")[0] if " · " in title else title
+    if len(main) <= 90:
+        return main
+    cut = main[:89]
+    if " " in cut:
+        cut = cut.rsplit(" ", 1)[0]
+    return cut.rstrip(" ,;:—-") + "…"
 
 
 # Facebook's crawler rejects WebP og:images and silently substitutes another
