@@ -9,3 +9,6 @@ candidate_issue.md
 weekly_roundup.md
 backlog_audit.md
 publish_selection_result.json
+
+# Reel videos are generated on demand, never committed.
+reels/
