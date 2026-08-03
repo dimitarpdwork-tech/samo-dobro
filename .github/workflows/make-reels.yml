@@ -63,10 +63,16 @@ jobs:
           ffmpeg -version | head -1
 
       - name: Install Python dependencies
-        # fonttools+brotli let the script convert the site's own .woff2 into a
-        # TTF that Pillow can draw with, so Reels match the site instead of
-        # falling back to a generic font.
-        run: pip install Pillow fonttools brotli
+        # requirements.txt is installed in full because make_reel.py imports
+        # pipeline.py (for is_animal_story, so "animal story" means the same
+        # thing here as in the editorial ranking), and pipeline.py imports
+        # requests. Installing only the reel's own dependencies left that
+        # import failing with ModuleNotFoundError.
+        #
+        # fonttools+brotli are extra: they convert the site's own .woff2 into a
+        # TTF that Pillow can draw with, so Reels match the site's typography
+        # rather than falling back to a generic font.
+        run: pip install -r requirements.txt fonttools brotli
 
       - name: Render Reels
         env:
