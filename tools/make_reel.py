@@ -44,7 +44,9 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-import pipeline
+# pipeline is imported lazily inside shareability(), not here: it pulls in
+# requests/feedparser/trafilatura, none of which rendering a video needs. A
+# plain --slug or --latest run therefore works with just Pillow installed.
 CONTENT = ROOT / "content" / "articles"
 ASSETS = ROOT / "assets"
 OUT_DIR = ROOT / "reels"
@@ -213,6 +215,7 @@ def shareability(cfg: dict, article: dict) -> int:
     score = 0
     probe = {"title": article.get("headline", ""),
              "summary": article.get("summary_short", "")}
+    import pipeline  # deferred: see the note next to ROOT
     if pipeline.is_animal_story(cfg, probe):
         score += 10
     hay = f'{article.get("headline","")} {article.get("summary_short","")}'
