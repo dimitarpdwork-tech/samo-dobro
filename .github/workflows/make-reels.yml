@@ -14,6 +14,11 @@ name: Make Reels
 # the history permanently for files you use once.
 
 on:
+  schedule:
+    # 05:40 UTC = 08:40 Sofia. One fresh video waiting each morning, picked
+    # from the previous 24h — batching three and posting them across the week
+    # means Friday's Reel carries Monday's news.
+    - cron: "40 5 * * *"
   workflow_dispatch:
     inputs:
       slug:
@@ -21,9 +26,13 @@ on:
         type: string
         default: ""
       count:
-        description: "How many recent articles to render (ignored if slug is set)"
+        description: "How many recent articles to render (ignored if slug or best is set)"
         type: string
-        default: "3"
+        default: "1"
+      best_hours:
+        description: "Auto-pick the most shareable article from the last N hours (blank = off)"
+        type: string
+        default: ""
       duration:
         description: "Seconds per video"
         type: string
@@ -42,10 +51,21 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        # ffmpeg is preinstalled on ubuntu-latest runners. fonttools+brotli let
-        # the script convert the site's own .woff2 into a TTF that Pillow can
-        # draw with, so Reels match the site instead of a generic fallback.
+      - name: Install ffmpeg
+        # Installed explicitly rather than assumed. ffmpeg used to ship in the
+        # ubuntu-latest runner image, but GitHub has been trimming those images
+        # and it is no longer guaranteed to be present — the first run of this
+        # workflow failed with "ffmpeg is not installed" for exactly that
+        # reason. Takes ~20s and makes the job independent of image contents.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version | head -1
+
+      - name: Install Python dependencies
+        # fonttools+brotli let the script convert the site's own .woff2 into a
+        # TTF that Pillow can draw with, so Reels match the site instead of
+        # falling back to a generic font.
         run: pip install Pillow fonttools brotli
 
       - name: Render Reels
@@ -53,19 +73,26 @@ jobs:
           IN_SLUG: ${{ github.event.inputs.slug }}
           IN_COUNT: ${{ github.event.inputs.count }}
           IN_DURATION: ${{ github.event.inputs.duration }}
+          IN_BEST: ${{ github.event.inputs.best_hours }}
         run: |
           ARGS="--duration ${IN_DURATION:-12}"
           if [ -n "$IN_SLUG" ]; then
             ARGS="$ARGS --slug $IN_SLUG"
+          elif [ -n "$IN_BEST" ]; then
+            ARGS="$ARGS --best-hours $IN_BEST"
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            # Scheduled runs always auto-pick the day's best story.
+            ARGS="$ARGS --best-hours 24"
           else
-            ARGS="$ARGS --latest ${IN_COUNT:-3}"
+            ARGS="$ARGS --latest ${IN_COUNT:-1}"
           fi
           python tools/make_reel.py $ARGS
 
       - name: Upload videos
         uses: actions/upload-artifact@v4
         with:
-          name: reels
+          name: reel-${{ github.run_number }}
           path: reels/*.mp4
           retention-days: 14
+          # named per-run so the daily videos don't overwrite each other
           if-no-files-found: error
