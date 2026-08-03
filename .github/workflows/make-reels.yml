@@ -1,0 +1,71 @@
+name: Make Reels
+
+# Renders vertical Reel videos from published articles and attaches them as a
+# downloadable artifact.
+#
+# It stops at generating the file rather than posting: publishing to Instagram
+# needs a Business account linked to the Page plus the Instagram Graph API, and
+# that API will only accept a video from a public URL, not an upload. Getting
+# there is a real setup job. Until it is worth doing, downloading a finished
+# MP4 and posting it by hand takes about a minute, and you keep control of the
+# caption — which is the part that actually decides whether a Reel travels.
+#
+# Videos are NOT committed to the repo: a 2 MB binary per article would bloat
+# the history permanently for files you use once.
+
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Article slug (leave blank for the most recent articles)"
+        type: string
+        default: ""
+      count:
+        description: "How many recent articles to render (ignored if slug is set)"
+        type: string
+        default: "3"
+      duration:
+        description: "Seconds per video"
+        type: string
+        default: "12"
+
+permissions:
+  contents: read
+
+jobs:
+  reels:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        # ffmpeg is preinstalled on ubuntu-latest runners. fonttools+brotli let
+        # the script convert the site's own .woff2 into a TTF that Pillow can
+        # draw with, so Reels match the site instead of a generic fallback.
+        run: pip install Pillow fonttools brotli
+
+      - name: Render Reels
+        env:
+          IN_SLUG: ${{ github.event.inputs.slug }}
+          IN_COUNT: ${{ github.event.inputs.count }}
+          IN_DURATION: ${{ github.event.inputs.duration }}
+        run: |
+          ARGS="--duration ${IN_DURATION:-12}"
+          if [ -n "$IN_SLUG" ]; then
+            ARGS="$ARGS --slug $IN_SLUG"
+          else
+            ARGS="$ARGS --latest ${IN_COUNT:-3}"
+          fi
+          python tools/make_reel.py $ARGS
+
+      - name: Upload videos
+        uses: actions/upload-artifact@v4
+        with:
+          name: reels
+          path: reels/*.mp4
+          retention-days: 14
+          if-no-files-found: error
