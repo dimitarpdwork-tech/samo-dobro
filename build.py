@@ -876,7 +876,20 @@ def base_page(site, *, title, description, path, body, jsonld=None, og_type="web
     title = truncate_title(title)
     ld = "".join(f'<script type="application/ld+json">{json.dumps(x, ensure_ascii=False)}</script>'
                  for x in (jsonld or []))
-    robots = '<meta name="robots" content="noindex">' if noindex else ""
+    # Indexable pages explicitly opt in to LARGE image previews.
+    #
+    # This is the single hard requirement for Google Discover: Discover is an
+    # image-led surface, and without max-image-preview:large Google is limited
+    # to a thumbnail, which effectively excludes the page from being featured.
+    # The default when the tag is absent is the small preview, so saying
+    # nothing is the same as opting out — which is where this site was.
+    #
+    # max-snippet:-1 and max-video-preview:-1 remove the equivalent limits on
+    # text and video previews. All three are the standard opt-in set for
+    # publishers and are what every news site emits.
+    robots = ('<meta name="robots" content="noindex">' if noindex else
+              '<meta name="robots" content="max-image-preview:large, '
+              'max-snippet:-1, max-video-preview:-1">')
     # Explicit og:image metadata helps crawlers validate the image without a
     # second fetch, and lets Facebook render the large card even on the very
     # first share of a URL (without dimensions, the first share often falls
