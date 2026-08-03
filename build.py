@@ -800,6 +800,29 @@ def truncate_title(title: str, max_len: int = 60) -> str:
 OG_JPEG_TWINS: dict = {}  # "/assets/articles/x.webp" -> (width, height)
 
 
+def og_default_url() -> str:
+    """Path to the fallback social image, with a content hash appended.
+
+    Facebook (and LinkedIn, and Slack) cache the image FILE keyed by its URL,
+    separately from the page-scrape cache that the Sharing Debugger clears.
+    Replacing assets/og-default.png without changing its URL therefore leaves
+    every one of them serving the old picture indefinitely — re-scraping the
+    page does not help, because the page still points at a URL they believe
+    they already have.
+
+    Appending a hash of the file's bytes means the URL changes whenever the
+    image does, so a new file is always fetched as a genuinely new image. This
+    is the same reasoning behind the cache-busting suffix that
+    regenerate_image() puts on article images.
+    """
+    src = ROOT / "assets" / "og-default.png"
+    try:
+        digest = hashlib.md5(src.read_bytes()).hexdigest()[:8]
+    except OSError:
+        return "/assets/og-default.png"
+    return f"/assets/og-default.png?v={digest}"
+
+
 def og_image_for(image_path: str):
     """Return (jpg_rel_path, width, height, mime) for a local WebP hero, or
     (None, None, None, None) when the og:image should stay as-is (non-WebP,
@@ -847,7 +870,7 @@ def write_og_jpeg_twins() -> None:
 
 
 def base_page(site, *, title, description, path, body, jsonld=None, og_type="website",
-              og_image="/assets/og-default.png", og_image_type=None,
+              og_image=og_default_url(), og_image_type=None,
               og_image_width=None, og_image_height=None, noindex=False, is_home=False) -> str:
     cfg = site.cfg
     title = truncate_title(title)
@@ -1717,7 +1740,7 @@ def build_articles(site, linked_tags: set, city_slugs: set | None = None) -> Non
             else:
                 rich_image = img_url  # no dimensions on file (older article) — fall back to a bare URL
         else:
-            img_url = site.abs_("/assets/og-default.png")
+            img_url = site.abs_(og_default_url())
             rich_image = img_url
         ld = {"@context": "https://schema.org", "@type": "NewsArticle",
               "headline": a["headline"], "description": a["meta_description"],
