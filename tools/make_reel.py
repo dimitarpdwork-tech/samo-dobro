@@ -31,15 +31,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+import pipeline
 CONTENT = ROOT / "content" / "articles"
 ASSETS = ROOT / "assets"
 OUT_DIR = ROOT / "reels"
@@ -195,16 +200,69 @@ def render(frame_path: Path, out_path: Path, duration: int) -> bool:
     return True
 
 
-def find_articles(slug: str, latest: int) -> list[dict]:
-    files = sorted(CONTENT.rglob("*.json"))
+def shareability(cfg: dict, article: dict) -> int:
+    """Rank recent articles by how well they travel on Reels.
+
+    This is NOT the same judgement as the editorial shortlist. A story can be
+    worth publishing and still be a poor video: a culture listing reads fine
+    on the site and dies in a vertical feed. What travels is animals, a named
+    local place, and a concrete number.
+
+    Reuses pipeline.is_animal_story so 'animal story' means one thing across
+    the whole system."""
+    score = 0
+    probe = {"title": article.get("headline", ""),
+             "summary": article.get("summary_short", "")}
+    if pipeline.is_animal_story(cfg, probe):
+        score += 10
+    hay = f'{article.get("headline","")} {article.get("summary_short","")}'
+    if any(city in hay for city in (cfg.get("known_cities") or {}).values()):
+        score += 6
+    if re.search(r"\d", article.get("headline", "")):
+        score += 3
+    # A real generated image beats the fallback logo every time in a feed.
+    if article.get("image_path"):
+        score += 5
+    else:
+        score -= 8
+    weights = {"priroda": 5, "zdrave": 4, "obshtestvo": 3,
+               "nauka": 2, "sport": 1, "kultura": 0, "ikonomika": 0}
+    score += weights.get(article.get("category", ""), 0)
+    return score
+
+
+def find_articles(cfg: dict, slug: str, latest: int, best_hours: int) -> list[dict]:
     arts = []
-    for path in files:
+    for path in sorted(CONTENT.rglob("*.json")):
         try:
             arts.append(json.loads(path.read_text(encoding="utf-8-sig")))
         except Exception:
             continue
     if slug:
         return [a for a in arts if a.get("slug") == slug]
+
+    if best_hours:
+        # Pick the single most shareable article published recently, rather
+        # than simply the newest. Generating a batch and posting it across the
+        # week means Friday's Reel carries Monday's news; one fresh video a day
+        # keeps the feed current.
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=best_hours)
+        recent = []
+        for a in arts:
+            try:
+                when = datetime.strptime(a.get("published", ""), "%Y-%m-%dT%H:%M:%SZ")
+            except (TypeError, ValueError):
+                continue
+            if when.replace(tzinfo=timezone.utc) >= cutoff:
+                recent.append(a)
+        if not recent:
+            return []
+        recent.sort(key=lambda a: shareability(cfg, a), reverse=True)
+        top = recent[0]
+        print(f"[reel] picked from {len(recent)} article(s) in the last "
+              f"{best_hours}h (score {shareability(cfg, top)}): {top.get('headline','')[:60]}")
+        return [top]
+
     arts.sort(key=lambda a: a.get("published", ""), reverse=True)
     return arts[:latest]
 
@@ -214,14 +272,23 @@ def main() -> int:
     ap.add_argument("--slug", default="")
     ap.add_argument("--latest", type=int, default=1)
     ap.add_argument("--duration", type=int, default=12)
+    ap.add_argument("--best-hours", type=int, default=0,
+                    help="pick the single most shareable article from the last N hours")
     args = ap.parse_args()
 
     if not shutil.which("ffmpeg"):
-        print("ffmpeg is not installed.", file=sys.stderr)
+        print("ffmpeg is not installed — it renders the video and there is no "
+              "fallback.\n"
+              "  In GitHub Actions: the workflow's 'Install ffmpeg' step should "
+              "handle this; if you see this message there, that step is missing "
+              "or failed.\n"
+              "  Locally: 'sudo apt install ffmpeg' (Linux), "
+              "'brew install ffmpeg' (Mac), or download from ffmpeg.org (Windows).",
+              file=sys.stderr)
         return 1
 
     cfg = load_config()
-    articles = find_articles(args.slug, args.latest)
+    articles = find_articles(cfg, args.slug, args.latest, args.best_hours)
     if not articles:
         print(f"No article found for --slug '{args.slug}'." if args.slug
               else "No articles found.", file=sys.stderr)
