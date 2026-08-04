@@ -215,16 +215,29 @@ background:var(--card);color:var(--ink);font-family:var(--fb);font-size:.9rem;bo
 .search-form button{flex:0 0 auto;min-width:44px;min-height:44px;padding:8px 12px;border-radius:999px;border:1.5px solid var(--line);
 background:var(--card);cursor:pointer;font-size:1rem;line-height:1}
 .search-form button:hover{border-color:var(--p)}
+/* Category nav.
+   The fade was previously a permanent mask on nav.cats, cutting the last 8%
+   of the strip at all times — so the final chip looked chopped in half even
+   when the row was fully scrolled and there was nothing more to see. The fade
+   now lives only on the .cats-more overlay, which the script below hides once
+   the end is reached. */
 nav.cats{display:flex;gap:8px;overflow-x:auto;padding:16px 0 6px;scrollbar-width:none;
-position:relative;-webkit-mask-image:linear-gradient(90deg,#000 0 92%,transparent);
-mask-image:linear-gradient(90deg,#000 0 92%,transparent)}
+position:relative}
 nav.cats::-webkit-scrollbar{display:none}
 .cats-wrap{position:relative}
 .cats-more{position:absolute;right:-2px;top:0;bottom:6px;display:flex;align-items:center;
 pointer-events:none;font-size:1.4rem;font-weight:900;color:var(--p);
-background:linear-gradient(90deg,transparent,var(--bg) 55%);padding:0 2px 0 24px;
+background:linear-gradient(90deg,transparent,var(--bg) 62%);padding:0 4px 0 34px;
 transition:opacity .2s}
 .cats-wrap.at-end .cats-more{opacity:0}
+/* On a wide screen nothing should be hidden at all: let the chips wrap onto a
+   second line instead of hiding items behind a horizontal scroll a mouse user
+   may never think to try. Scrolling stays on narrow screens, where it is the
+   expected gesture. */
+@media(min-width:940px){
+nav.cats{flex-wrap:wrap;overflow-x:visible}
+.cats-more{display:none}
+}
 .chip{flex:0 0 auto;font-family:var(--fl);font-size:.83rem;font-weight:700;letter-spacing:.04em;
 padding:13px 16px;min-height:48px;display:inline-flex;align-items:center;border-radius:999px;
 border:1.5px solid var(--line);background:var(--card);color:var(--ink);
