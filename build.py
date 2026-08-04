@@ -440,6 +440,33 @@ padding:17px 18px;border-radius:var(--r);background:color-mix(in srgb,var(--p) 1
 border:1px solid var(--line)}
 .growth-mini-cta a{font-weight:800;color:var(--pd);text-decoration:underline;text-underline-offset:3px}
 @media(max-width:640px){.growth-cta-box{grid-template-columns:1fr}.growth-city-grid{grid-template-columns:1fr}}
+
+/* promise banner: tells a first-time visitor what this site IS */
+.promise{display:flex;gap:12px;align-items:center;margin:0 0 22px;padding:12px 16px;
+border-radius:999px;background:color-mix(in srgb,var(--p) 16%,var(--card));
+border:1px solid var(--line);font-family:var(--fl);font-size:.94rem;line-height:1.4}
+.promise-icon{font-size:1.3rem;line-height:1;flex:0 0 auto}
+.promise strong{font-weight:800}
+.promise a{color:var(--pd);text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
+@media(max-width:560px){.promise{border-radius:var(--r);font-size:.88rem}}
+
+/* next story: ONE strong follow-on, not a grid of five */
+.nextup{display:block;margin:34px 0 10px;border:1.5px solid var(--line);border-radius:var(--r);
+overflow:hidden;background:var(--card);box-shadow:0 8px 30px rgba(30,50,64,.06)}
+.nextup:hover{border-color:var(--p)}
+.nextup-img{width:100%;height:230px;object-fit:cover;display:block}
+.nextup-body{padding:18px 20px 20px}
+.nextup-kicker{font-family:var(--fl);font-size:.76rem;font-weight:800;letter-spacing:.08em;
+text-transform:uppercase;color:var(--pd);margin-bottom:7px}
+.nextup h3{font-family:var(--fd);font-weight:800;letter-spacing:-.02em;margin:0 0 6px;
+font-size:1.32rem;line-height:1.2}
+.nextup p{margin:0;color:var(--muted);font-size:.95rem}
+/* newsletter form */
+.nl-form{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.nl-form input[type=email]{flex:1 1 220px;min-width:0;border:1.5px solid var(--line);
+border-radius:999px;padding:12px 18px;background:var(--card);color:var(--ink);font:inherit}
+.nl-form input[type=email]:focus{outline:none;border-color:var(--p)}
+.nl-note{margin-top:10px;font-size:.84rem;color:var(--muted)}
 """)
 
 
@@ -1167,6 +1194,8 @@ def build_lists(site) -> None:
                 body += f'<div class="sec pillar-sec"><h2>{esc(guide_label)}</h2><span class="rule"></span></div>'
                 body += '<div class="grid pillar-grid">' + "".join(card(site, a) for a in pillars) + "</div>"
             is_home_p1 = (key == "home" and p == 1)
+            if is_home_p1:
+                body = promise_banner(site) + body
             body += '<div class="grid">' + "".join(
                 card(site, a, eager=(is_home_p1 and i == 0)) for i, a in enumerate(rest)
             ) + "</div>"
@@ -1511,17 +1540,78 @@ def build_city_tag_redirects(site, cities: dict) -> list[str]:
     return created
 
 
+def promise_banner(site) -> str:
+    """One line telling a first-time visitor what this site is.
+
+    69% of readers arrive from Facebook, read one article for ~41 seconds and
+    leave. They have no idea they have landed somewhere that is different by
+    design — an article page looks like any other news page. This states the
+    promise at the moment it matters, on the page they actually land on.
+    """
+    ui = site.cfg["ui"]
+    text = ui.get("promise_text", "")
+    if not text:
+        return ""
+    link = ui.get("promise_link", "")
+    href = site.u("/" + site.cfg["about_path"] + "/")
+    tail = f' <a href="{href}">{esc(link)}</a>' if link else ""
+    return (f'<div class="promise"><span class="promise-icon" aria-hidden="true">☀</span>'
+            f'<span>{text}{tail}</span></div>')
+
+
+def next_up(site, article, related) -> str:
+    """A single strong follow-on story, image-led.
+
+    Replaces nothing — it sits above the existing related grid. A grid of three
+    equal cards asks the reader to choose; at 41 seconds of attention, choosing
+    loses to leaving. One large, obvious next story is a decision they can make
+    without thinking."""
+    if not related:
+        return ""
+    nxt = related[0]
+    ui = site.cfg["ui"]
+    img = ""
+    if nxt.get("image_path"):
+        img = (f'<img class="nextup-img" src="{esc(nxt["image_path"])}" '
+               f'alt="{esc(nxt["headline"])}" loading="lazy">')
+    return (f'<a class="nextup" href="{site.u(site.article_path(nxt))}">{img}'
+            f'<div class="nextup-body">'
+            f'<div class="nextup-kicker">{esc(ui.get("next_up", "Още нещо хубаво"))}</div>'
+            f'<h3>{esc(nxt["headline"])}</h3>'
+            f'<p>{esc(nxt.get("summary_short", ""))}</p></div></a>')
+
+
 def newsletter_cta(site) -> str:
     """Inline newsletter CTA appended to the home page and article pages."""
     cfg, ui = site.cfg, site.cfg["ui"]
     href = site.u(f'/{cfg.get("newsletter_path", "newsletter")}/')
+    # A real form when a provider is configured, otherwise the old link.
+    #
+    # This matters more than it looks: 41 seconds is far too short to build a
+    # reading habit by browsing, so the email is the only durable connection to
+    # a reader who liked what they saw. A mailto: link — which is what this was
+    # — asks someone to open a mail client and compose a message. Almost nobody
+    # does that.
+    action = (cfg.get("newsletter") or {}).get("form_action", "")
+    if action:
+        field = (cfg.get("newsletter") or {}).get("email_field", "email")
+        inner = (
+            f'<form class="nl-form" action="{esc(action)}" method="post" target="_blank">'
+            f'<input type="email" name="{esc(field)}" required '
+            f'placeholder="{esc(ui.get("newsletter_placeholder", "твоят имейл"))}" '
+            f'aria-label="{esc(ui.get("newsletter_placeholder", "твоят имейл"))}">'
+            f'<button class="growth-btn" type="submit">'
+            f'{esc(ui.get("newsletter_cta_button", ""))}</button></form>'
+            f'<div class="nl-note">{esc(ui.get("newsletter_note", ""))}</div>'
+        )
+    else:
+        inner = f'<a class="growth-btn" href="{href}">{esc(ui.get("newsletter_cta_button", ""))}</a>'
     return (
         f'<section class="growth-cta-box" aria-labelledby="newsletter-cta-title">'
         f'<div class="growth-cta-icon" aria-hidden="true">☀</div><div>'
         f'<h2 id="newsletter-cta-title">{esc(ui.get("newsletter_cta_title", ""))}</h2>'
         f'<p>{esc(ui.get("newsletter_cta_text", ""))}</p>'
-        f'<a class="growth-btn" href="{href}">{esc(ui.get("newsletter_cta_button", ""))}</a>'
-        f'</div></section>'
+        f'{inner}</div></section>'
     )
 
 
@@ -1684,8 +1774,14 @@ def build_articles(site, linked_tags: set, city_slugs: set | None = None) -> Non
             related += [r for r in site.articles if r["slug"] not in seen][: 3 - len(related)]
         rel_html = ""
         if related:
-            rel_html = (f'<div class="sec"><h2>{esc(ui["more_good"])}</h2><span class="rule"></span></div>'
-                        '<div class="grid">' + "".join(card(site, r) for r in related) + "</div>")
+            # One big obvious next story first, then the usual grid for anyone
+            # still browsing. See next_up() for why the order matters.
+            rel_html = next_up(site, a, related)
+            rest = related[1:]
+            if rest:
+                rel_html += (f'<div class="sec"><h2>{esc(ui["more_good"])}</h2>'
+                             f'<span class="rule"></span></div>'
+                             '<div class="grid">' + "".join(card(site, r) for r in rest) + "</div>")
         def _tag_href(slug):
             if slug in cfg["categories"]:
                 return site.cat_path(slug)
@@ -1720,6 +1816,7 @@ def build_articles(site, linked_tags: set, city_slugs: set | None = None) -> Non
         share_html = build_share_row(cfg, ui, a["slug"], article_url, a["headline"])
         body = f"""<article class="article">
 <a class="backlink" href="{site.u('/')}">← {esc(ui['back_home'])}</a>
+{promise_banner(site)}
 {meta_row(site, a)}
 <h1>{esc(a['headline'])}</h1>
 <span class="byline">{byline_text} · <a href="{site.u('/' + cfg['about_path'] + '/#editorial-process')}">{esc(ui.get('how_it_works', 'How this works'))}</a></span>
