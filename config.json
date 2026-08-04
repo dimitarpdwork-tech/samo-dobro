@@ -59,6 +59,11 @@
   "submit_path": "izprati-dobra-novina",
   "digest_path": "dnes",
   "timezone": "Europe/Sofia",
+  "newsletter": {
+    "_comment": "Paste the form POST url from MailerLite / Buttondown / Mailchimp here and the CTA turns into a real inline signup form everywhere. Leave form_action empty and it falls back to a link to the newsletter page. email_field is the input name the provider expects: MailerLite uses 'fields[email]', Buttondown and Mailchimp use 'email'.",
+    "form_action": "",
+    "email_field": "email"
+  },
   "publishing_schedule": {
     "_comment": "Spaces a batch approved in one /publish across the day instead of dropping it all at once. The first article goes live immediately; each later one waits interval_minutes. A slot falling outside quiet_hours (local time, per the timezone setting) moves to the next morning, so approving six stories at 21:00 doesn't publish the last at 02:00. Set quiet_hours to null to publish around the clock.",
     "enabled": true,
@@ -236,6 +241,11 @@
     "redirect_notice": "Тази страница се премести. Отвеждаме те към:",
     "submit_nav_label": "💛 Изпрати добра новина",
     "submit_cta_link": "Изпрати ни я →",
+    "promise_text": "Тук няма катастрофи, война и политика. <strong>Само добри новини от България.</strong>",
+    "promise_link": "Защо?",
+    "next_up": "Още нещо хубаво",
+    "newsletter_placeholder": "твоят имейл",
+    "newsletter_note": "Веднъж седмично. Без спам. Отписваш се с един клик.",
     "newsletter_cta_title": "Добрите новини веднъж седмично",
     "newsletter_cta_text": "Без черна хроника и без шум. Подбираме най-смисленото от седмицата и го събираме на едно място.",
     "newsletter_cta_button": "Искам седмичния бюлетин",
