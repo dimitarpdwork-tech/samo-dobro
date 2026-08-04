@@ -62,7 +62,11 @@
   "newsletter": {
     "_comment": "Paste the form POST url from MailerLite / Buttondown / Mailchimp here and the CTA turns into a real inline signup form everywhere. Leave form_action empty and it falls back to a link to the newsletter page. email_field is the input name the provider expects: MailerLite uses 'fields[email]', Buttondown and Mailchimp use 'email'.",
     "form_action": "",
-    "email_field": "email"
+    "email_field": "fields[email]",
+    "hidden_fields": {
+      "ml-submit": "1",
+      "anticsrf": "true"
+    }
   },
   "publishing_schedule": {
     "_comment": "Spaces a batch approved in one /publish across the day instead of dropping it all at once. The first article goes live immediately; each later one waits interval_minutes. A slot falling outside quiet_hours (local time, per the timezone setting) moves to the next morning, so approving six stories at 21:00 doesn't publish the last at 02:00. Set quiet_hours to null to publish around the clock.",
