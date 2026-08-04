@@ -106,7 +106,12 @@ For each chosen story return:
 Order the shortlist BEST FIRST.
 {recent_block}
 
-Respond ONLY with a JSON array:
+Respond with the JSON array and NOTHING else — no preamble, no explanation
+before or after it, no markdown fences. Start your reply with "[" as the very
+first character. Put any reasoning inside each object's "why" field, in one
+short sentence.
+
+JSON array:
 [
   {{"candidate": 3, "score": 9, "category": "priroda", "why": "Конкретен природозащитен резултат с местно значение"}}
 ]
@@ -161,10 +166,18 @@ def main() -> int:
     prompt = build_editorial_prompt(cfg, candidates, shortlist_size, recent)
 
     print(f"[shortlist] asking Claude for up to {shortlist_size} options…")
+    # Scale the ceiling with how many options were asked for, instead of a
+    # fixed 2500. Each selection is a JSON object with a Bulgarian sentence in
+    # it, and Cyrillic costs roughly 2-3 tokens per word — 20 options simply do
+    # not fit in 2500, and when the model also writes a short preamble it can
+    # be cut off before producing any JSON at all. Output tokens are billed
+    # only for what is actually generated, so a generous ceiling costs nothing
+    # on a normal run.
+    token_budget = max(4000, 1200 + shortlist_size * 220)
     raw = pipeline.call_claude(
         cfg,
         prompt,
-        max_tokens_override=2500,
+        max_tokens_override=token_budget,
         hard_fail=True,
     )
     picks = pipeline.parse_selection(raw)
