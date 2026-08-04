@@ -1111,7 +1111,30 @@ def parse_selection(raw: str) -> list[dict]:
     text = re.sub(r"```$", "", text).strip()
     start = text.find("[")
     if start == -1:
-        print("  [parse] no JSON array in model output — treating as zero selections.")
+        # No opening bracket at all. This is the truncation case that used to
+        # throw the whole batch away: the model wrote prose first, hit the
+        # token ceiling, and never reached the array — so the recovery below,
+        # which started scanning from "[", never ran.
+        #
+        # _split_top_level_objects works on bare {...} blocks and does not need
+        # the surrounding array, so scan the raw text instead. Any complete
+        # objects the model did emit are still perfectly usable.
+        loose = _split_top_level_objects(text)
+        recovered = []
+        for obj_text in loose:
+            try:
+                obj = json.loads(obj_text)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(obj, dict) and "candidate" in obj:
+                recovered.append(obj)
+        if recovered:
+            print(f"  [parse] no JSON array, but recovered {len(recovered)} "
+                  f"loose story object(s) from the response.")
+            return recovered
+        print("  [parse] no JSON array and no recoverable objects — treating as "
+              "zero selections. If this repeats, the response is being cut off "
+              "before any JSON is produced; raise max_tokens.")
         return []
     end = text.rfind("]")
     if end != -1 and end > start:
