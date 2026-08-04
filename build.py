@@ -1592,14 +1592,27 @@ def newsletter_cta(site) -> str:
     # a reader who liked what they saw. A mailto: link — which is what this was
     # — asks someone to open a mail client and compose a message. Almost nobody
     # does that.
-    action = (cfg.get("newsletter") or {}).get("form_action", "")
+    nl = cfg.get("newsletter") or {}
+    action = nl.get("form_action", "")
     if action:
-        field = (cfg.get("newsletter") or {}).get("email_field", "email")
+        field = nl.get("email_field", "email")
+        # Providers require extra hidden inputs alongside the email. MailerLite
+        # needs ml-submit=1 and anticsrf=true; without them the endpoint rejects
+        # a plain (non-JavaScript) POST. Keeping them in config means switching
+        # provider is a config edit, not a code change.
+        hidden = "".join(
+            f'<input type="hidden" name="{esc(k)}" value="{esc(v)}">'
+            for k, v in (nl.get("hidden_fields") or {}).items()
+        )
+        # target=_blank so a submit never navigates the reader away from the
+        # article they were reading. Providers that answer a raw POST with JSON
+        # render that response in the throwaway tab rather than over the site.
         inner = (
             f'<form class="nl-form" action="{esc(action)}" method="post" target="_blank">'
             f'<input type="email" name="{esc(field)}" required '
             f'placeholder="{esc(ui.get("newsletter_placeholder", "твоят имейл"))}" '
             f'aria-label="{esc(ui.get("newsletter_placeholder", "твоят имейл"))}">'
+            f'{hidden}'
             f'<button class="growth-btn" type="submit">'
             f'{esc(ui.get("newsletter_cta_button", ""))}</button></form>'
             f'<div class="nl-note">{esc(ui.get("newsletter_note", ""))}</div>'
