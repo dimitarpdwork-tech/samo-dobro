@@ -1632,8 +1632,31 @@ def build_newsletter_page(site) -> str:
     cfg, ui = site.cfg, site.cfg["ui"]
     email = cfg["contact_email"]
     import urllib.parse
-    mailto = ("mailto:" + urllib.parse.quote(email, safe="@") + "?subject="
-              + urllib.parse.quote(f'Искам седмичния бюлетин на {cfg["site_name"]}'))
+    # The dedicated newsletter page must carry the real form too. It was the
+    # one page still showing "write to us and we'll add you", which is the
+    # weakest possible ask on the page most likely to convert.
+    nl = cfg.get("newsletter") or {}
+    if nl.get("form_action"):
+        field = nl.get("email_field", "email")
+        hidden = "".join(
+            f'<input type="hidden" name="{esc(k)}" value="{esc(v)}">'
+            for k, v in (nl.get("hidden_fields") or {}).items()
+        )
+        signup = (
+            f'<form class="nl-form" action="{esc(nl["form_action"])}" method="post" target="_blank">'
+            f'<input type="email" name="{esc(field)}" required '
+            f'placeholder="{esc(ui.get("newsletter_placeholder", "твоят имейл"))}" '
+            f'aria-label="{esc(ui.get("newsletter_placeholder", "твоят имейл"))}">'
+            f'{hidden}<button class="growth-btn" type="submit">'
+            f'{esc(ui.get("newsletter_cta_button", ""))}</button></form>'
+            f'<div class="nl-note">{esc(ui.get("newsletter_note", ""))}</div>'
+        )
+    else:
+        mailto = ("mailto:" + urllib.parse.quote(email, safe="@") + "?subject="
+                  + urllib.parse.quote(f'Искам седмичния бюлетин на {cfg["site_name"]}'))
+        signup = (f'<p>Пълното записване ще бъде добавено скоро. Дотогава ни пиши '
+                  f'и ще те включим сред първите читатели.</p>'
+                  f'<a class="growth-btn" href="{esc(mailto)}">Пиши ми за бюлетина</a>')
     body = f"""<div class="about">
 <div class="growth-kicker">☀ СЕДМИЧЕН БЮЛЕТИН</div>
 <h1>Добрите новини в една кратка неделна селекция</h1>
@@ -1643,8 +1666,7 @@ def build_newsletter_page(site) -> str:
 <div>✓ Местни добри новини и човешки истории</div>
 <div>✓ Един имейл седмично, не всекидневен спам</div>
 </div>
-<p>Пълното записване ще бъде добавено с newsletter платформата. Дотогава можеш да ни пишеш и ще те включим сред първите читатели.</p>
-<a class="growth-btn" href="{esc(mailto)}">Пиши ми за бюлетина</a>
+{signup}
 </div>"""
     path = f'/{cfg.get("newsletter_path", "newsletter")}/'
     write(DIST / path.strip("/") / "index.html",
