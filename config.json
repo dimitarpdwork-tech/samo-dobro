@@ -61,7 +61,7 @@
   "timezone": "Europe/Sofia",
   "newsletter": {
     "_comment": "Paste the form POST url from MailerLite / Buttondown / Mailchimp here and the CTA turns into a real inline signup form everywhere. Leave form_action empty and it falls back to a link to the newsletter page. email_field is the input name the provider expects: MailerLite uses 'fields[email]', Buttondown and Mailchimp use 'email'.",
-    "form_action": "",
+    "form_action": "https://assets.mailerlite.com/jsonp/2554647/forms/194852161339786285/subscribe",
     "email_field": "fields[email]",
     "hidden_fields": {
       "ml-submit": "1",
