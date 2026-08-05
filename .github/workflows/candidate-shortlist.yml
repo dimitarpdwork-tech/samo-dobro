@@ -2,8 +2,22 @@ name: Daily editorial shortlist
 
 on:
   schedule:
-    # 13:17 UTC = 16:17 in Bulgaria during summer time.
-    - cron: "17 13 * * *"
+    # Target: ~08:25 Sofia, so the shortlist is waiting with morning coffee.
+    #
+    # GitHub cron is always UTC and does NOT follow daylight saving, so a
+    # single line drifts by an hour twice a year. Two lines with month ranges
+    # keep the local time steady instead:
+    #   Apr-Oct  Bulgaria is UTC+3  ->  05:25 UTC = 08:25 Sofia
+    #   Nov-Mar  Bulgaria is UTC+2  ->  06:25 UTC = 08:25 Sofia
+    #
+    # The changeover falls on the last Sunday of March and October, so for a
+    # few days each year the run lands at 07:25 or 09:25. Still inside the
+    # morning window, and far better than being an hour out for six months.
+    #
+    # :25 rather than :00 deliberately — the top of the hour is the most
+    # contended slot on GitHub's shared scheduler and gets delayed most.
+    - cron: "25 5 * 4-10 *"
+    - cron: "25 6 * 1-3,11-12 *"
   workflow_dispatch:
     inputs:
       shortlist_size:
