@@ -47,6 +47,10 @@ on:
         description: "One-off: generate an original, web-search-grounded evergreen guide (наръчник) instead of daily news."
         type: boolean
         default: false
+      guide_topic:
+        description: "Only with generate_guide: write about THIS exact topic. Blank = the model picks one."
+        type: string
+        default: ""
       guide_category:
         description: "Only with generate_guide: category id to target (e.g. zdrave, priroda, sport). Blank = thinnest category."
         type: string
@@ -83,6 +87,7 @@ env:
   IN_REWRITE_LIMIT: ${{ github.event.inputs.rewrite_limit }}
   IN_GUIDE: ${{ github.event.inputs.generate_guide }}
   IN_GUIDE_CATEGORY: ${{ github.event.inputs.guide_category }}
+  IN_GUIDE_TOPIC: ${{ github.event.inputs.guide_topic }}
   IN_GUIDE_COUNT: ${{ github.event.inputs.guide_count }}
 
 jobs:
@@ -159,7 +164,8 @@ jobs:
         run: |
           ARGS="--generate-guide --guide-count ${IN_GUIDE_COUNT:-1}"
           if [ -n "$IN_GUIDE_CATEGORY" ]; then ARGS="$ARGS --guide-category $IN_GUIDE_CATEGORY"; fi
-          python pipeline.py $ARGS
+          if [ -n "$IN_GUIDE_TOPIC" ]; then ARGS="$ARGS --guide-topic \"$IN_GUIDE_TOPIC\""; fi
+          eval python pipeline.py $ARGS
 
       - name: Open review PR (after guide generation)
         if: github.event.inputs.generate_guide == 'true'
