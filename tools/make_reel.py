@@ -275,6 +275,8 @@ def main() -> int:
     ap.add_argument("--slug", default="")
     ap.add_argument("--latest", type=int, default=1)
     ap.add_argument("--duration", type=int, default=12)
+    ap.add_argument("--style", choices=["single","story"], default="single",
+                    help="single = one photo card; story = photo + fact cards + CTA")
     ap.add_argument("--best-hours", type=int, default=0,
                     help="pick the single most shareable article from the last N hours")
     args = ap.parse_args()
@@ -301,6 +303,15 @@ def main() -> int:
     made = 0
     for article in articles:
         slug = article.get("slug", "reel")
+        if args.style == "story":
+            out = OUT_DIR / f"{slug}-story.mp4"
+            if render_story(cfg, article, out):
+                size_mb = out.stat().st_size / 1024 / 1024
+                print(f"  [reel] {out.relative_to(ROOT)}  ({size_mb:.1f} MB, story)")
+                made += 1
+            else:
+                print(f"  [fail] {slug}", file=sys.stderr)
+            continue
         frame = build_frame(cfg, article)
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             frame.save(tmp.name)
@@ -315,6 +326,123 @@ def main() -> int:
 
     print(f"[reel] {made} video(s) written to {OUT_DIR.relative_to(ROOT)}/")
     return 0 if made else 1
+
+# ---------------------------------------------------------------- story mode
+
+def build_story_cards(cfg: dict, article: dict) -> list[dict]:
+    """Break an article into a sequence of screens for a multi-card Reel.
+
+    The single-frame Reel shows one headline over one photo and holds it for
+    twelve seconds — by second four the viewer has read everything there is to
+    read and the remaining eight seconds are dead air. A sequence keeps giving
+    the eye a reason to stay, which is the metric the algorithm actually
+    watches.
+
+    Cards come from quick_facts, which are already written as short standalone
+    statements — exactly the right shape for a screen. No new content is
+    invented for the video."""
+    ui = cfg["ui"]
+    cards = [{"kind": "photo", "text": article.get("headline", ""), "secs": 3.2}]
+    for fact in (article.get("quick_facts") or [])[:4]:
+        cards.append({"kind": "fact", "text": fact, "secs": 2.9})
+    cards.append({"kind": "cta",
+                  "text": ui.get("newsletter_cta_title", ""),
+                  "secs": 2.6})
+    return cards
+
+
+def render_card(cfg: dict, article: dict, card: dict, index: int, total: int) -> Image.Image:
+    """One 1080x1920 screen."""
+    colors = cfg["colors"]
+    ink, primary = hex_rgb(colors["ink"]), hex_rgb(colors["primary"])
+    bg, card_c = hex_rgb(colors["bg"]), hex_rgb(colors["card"])
+
+    if card["kind"] == "photo":
+        canvas = build_frame(cfg, article)          # reuse the photo composition
+        return canvas
+
+    canvas = Image.new("RGB", (W, H), bg)
+    draw = ImageDraw.Draw(canvas)
+
+    # soft brand wash at the bottom so the screens feel like one piece
+    for y in range(int(H * 0.55), H):
+        t = (y - H * 0.55) / (H * 0.45)
+        draw.line([(0, y), (W, y)],
+                  fill=tuple(int(bg[i] + (primary[i] - bg[i]) * t * 0.22) for i in range(3)))
+
+    brand_font = get_font(46, bold=True)
+    draw.text((70, 92), cfg["site_name"], font=brand_font, fill=ink)
+    draw.rounded_rectangle([70, 158, 190, 168], radius=5, fill=primary)
+
+    # progress pips — a visible sense of "there is more" keeps people watching
+    px = 70
+    for i in range(total):
+        filled = i <= index
+        draw.rounded_rectangle([px, H - 120, px + 46, H - 112], radius=4,
+                               fill=primary if filled else tuple(
+                                   int(c * 0.25 + 255 * 0.75) for c in primary))
+        px += 56
+
+    if card["kind"] == "cta":
+        f = get_font(84, bold=True)
+        lines = wrap(draw, card["text"], f, W - 150)[:4]
+        y = int(H * 0.40)
+        for line in lines:
+            draw.text((75, y), line, font=f, fill=ink)
+            y += 104
+        dom = cfg["base_url"].replace("https://", "").rstrip("/")
+        df = get_font(52, bold=True)
+        draw.rounded_rectangle([70, y + 40, 70 + int(draw.textlength(dom, font=df)) + 76,
+                                y + 40 + 96], radius=48, fill=primary)
+        draw.text((108, y + 62), dom, font=df, fill=ink)
+        return canvas
+
+    # fact card
+    qf = get_font(96, bold=True)
+    draw.text((70, int(H * 0.26)), "•", font=qf, fill=primary)
+    f = get_font(72, bold=True)
+    lines = wrap(draw, card["text"], f, W - 150)[:7]
+    y = int(H * 0.26) + 120
+    for line in lines:
+        draw.text((75, y), line, font=f, fill=ink)
+        y += 92
+    return canvas
+
+
+def render_story(cfg: dict, article: dict, out_path: Path) -> bool:
+    """Render the card sequence to one MP4 with crossfades."""
+    cards = build_story_cards(cfg, article)
+    tmpdir = Path(tempfile.mkdtemp())
+    clips = []
+    for i, card in enumerate(cards):
+        img = render_card(cfg, article, card, i, len(cards))
+        p = tmpdir / f"card{i:02d}.png"
+        img.save(p)
+        clip = tmpdir / f"clip{i:02d}.mp4"
+        # A slow push on every card, not just the photo: absolute stillness
+        # reads as a broken video on a platform where everything moves.
+        vf = (f"scale={W*2}:{H*2},zoompan=z='min(zoom+0.0004,1.06)'"
+              f":d={int(card['secs']*30)}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+              f":s={W}x{H}:fps=30,format=yuv420p")
+        r = subprocess.run(["ffmpeg", "-y", "-loop", "1", "-i", str(p), "-vf", vf,
+                            "-t", str(card["secs"]), "-c:v", "libx264", "-preset", "medium",
+                            "-crf", "20", "-r", "30", str(clip)],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            print(r.stderr[-800:], file=sys.stderr)
+            return False
+        clips.append(clip)
+
+    listing = tmpdir / "list.txt"
+    listing.write_text("".join(f"file '{c}'\n" for c in clips), encoding="utf-8")
+    r = subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(listing),
+                        "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                        "-movflags", "+faststart", str(out_path)],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        print(r.stderr[-800:], file=sys.stderr)
+        return False
+    return True
 
 
 if __name__ == "__main__":
