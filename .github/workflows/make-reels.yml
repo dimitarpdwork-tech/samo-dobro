@@ -34,9 +34,14 @@ on:
         type: string
         default: ""
       duration:
-        description: "Seconds per video"
+        description: "Seconds per video (single style only)"
         type: string
         default: "12"
+      style:
+        description: "single = one photo card | story = photo + fact cards + CTA (needs quick_facts)"
+        type: choice
+        options: ["single", "story"]
+        default: "single"
 
 permissions:
   contents: read
@@ -80,8 +85,9 @@ jobs:
           IN_COUNT: ${{ github.event.inputs.count }}
           IN_DURATION: ${{ github.event.inputs.duration }}
           IN_BEST: ${{ github.event.inputs.best_hours }}
+          IN_STYLE: ${{ github.event.inputs.style }}
         run: |
-          ARGS="--duration ${IN_DURATION:-12}"
+          ARGS="--duration ${IN_DURATION:-12} --style ${IN_STYLE:-single}"
           if [ -n "$IN_SLUG" ]; then
             ARGS="$ARGS --slug $IN_SLUG"
           elif [ -n "$IN_BEST" ]; then
