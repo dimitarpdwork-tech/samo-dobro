@@ -2199,7 +2199,8 @@ def load_existing_guide_topics(category_id: str) -> list[str]:
     return topics
 
 
-def build_guide_prompt(cfg: dict, category_id: str, avoid_topics: list[str]) -> str:
+def build_guide_prompt(cfg: dict, category_id: str, avoid_topics: list[str],
+                       topic_override: str = "") -> str:
     """Prompt for an original, source-free evergreen 'наръчник' guide article.
     Unlike the daily wire-rewrite pipeline, this is explicitly told to use
     live web search to verify facts before writing — especially anything
@@ -2210,6 +2211,19 @@ def build_guide_prompt(cfg: dict, category_id: str, avoid_topics: list[str]) -> 
     problem: it's not a rewrite of one source, so there's nothing to
     attribute away to."""
     cat = cfg["categories"][category_id]
+    # An editor-supplied topic replaces the model's own choice. This is the
+    # only route in the whole system for a human to originate an article
+    # rather than react to a wire feed — everything else starts from something
+    # somebody else already published.
+    topic_block = ""
+    if topic_override:
+        topic_block = (
+            f"\nTHE EDITOR HAS CHOSEN THE TOPIC. Write about exactly this:\n"
+            f"  {topic_override}\n"
+            f"Treat it as the brief, not as a suggestion. If the topic is broad, "
+            f"narrow it to the most useful angle for a Bulgarian reader and say so "
+            f"in the opening. If it is narrow, cover it thoroughly. Do NOT substitute "
+            f"a different topic you consider more suitable.\n")
     avoid_block = ""
     if avoid_topics:
         avoid_list = "\n".join(f"- {t}" for t in avoid_topics)
@@ -2218,6 +2232,7 @@ def build_guide_prompt(cfg: dict, category_id: str, avoid_topics: list[str]) -> 
 
     return f"""You are the editor of "{cfg['site_name']}", writing an original, evergreen reference guide
 (a 'наръчник') for the "{cat['label']}" category, in {cfg['language_name']}.
+{topic_block}
 
 This is NOT a rewrite of one news story. It is a standalone, comprehensive guide that:
 - Is not tied to any single source — it's your own synthesis of well-established, publicly known facts
@@ -2307,7 +2322,8 @@ def save_guide(cfg: dict, written: dict, category_id: str) -> str | None:
     return slug
 
 
-def generate_guide(cfg: dict, category_override: str | None = None) -> None:
+def generate_guide(cfg: dict, category_override: str | None = None,
+                   topic: str = "") -> None:
     """Generate one original, web-search-grounded evergreen guide article,
     targeting the thinnest category by default (or a specific one via
     --guide-category)."""
@@ -2319,7 +2335,9 @@ def generate_guide(cfg: dict, category_override: str | None = None) -> None:
     if avoid_topics:
         print(f"  avoiding {len(avoid_topics)} existing guide topic(s) already covered in this category")
 
-    prompt = build_guide_prompt(cfg, category_id, avoid_topics)
+    prompt = build_guide_prompt(cfg, category_id, avoid_topics, topic_override=topic)
+    if topic:
+        print(f"  [guide] editor-supplied topic: {topic[:80]}")
     print("  researching and writing (uses live web search — this can take a minute or two)…")
     raw = call_claude(cfg, prompt,
                        tools=[{"type": "web_search_20250305", "name": "web_search"}],
@@ -2338,7 +2356,8 @@ def generate_guide(cfg: dict, category_override: str | None = None) -> None:
         print("  Guide response was missing a headline or body. Nothing saved.")
 
 
-def generate_guides(cfg: dict, count: int, category_override: str | None = None) -> None:
+def generate_guides(cfg: dict, count: int, category_override: str | None = None,
+                    topic: str = "") -> None:
     """Generate `count` guides in one run. Each call re-reads existing guides
     from disk, so category selection (pick_thinnest_category) and duplicate-
     topic avoidance both naturally account for guides created earlier in the
@@ -2357,7 +2376,7 @@ def generate_guides(cfg: dict, count: int, category_override: str | None = None)
     for i in range(count):
         if count > 1:
             print(f"\n=== guide {i + 1} of {count} ===")
-        generate_guide(cfg, category_override=category_override)
+        generate_guide(cfg, category_override=category_override, topic=topic)
         if i < count - 1:
             time.sleep(5)  # brief pause between calls
 
@@ -2537,6 +2556,8 @@ def main() -> None:
     ap.add_argument("--generate-guide", action="store_true",
                      help="generate one original, web-search-grounded evergreen guide article "
                           "(a 'наръчник'), targeting the thinnest category by default")
+    ap.add_argument("--guide-topic", type=str, default="",
+                     help="write about THIS topic instead of letting the model choose one")
     ap.add_argument("--guide-category", type=str, default=None,
                      help="override which category --generate-guide targets (defaults to the thinnest)")
     ap.add_argument("--guide-count", type=int, default=1,
@@ -2570,7 +2591,9 @@ def main() -> None:
         write_pr_description()
         return
     if args.generate_guide:
-        generate_guides(cfg, count=max(1, args.guide_count), category_override=args.guide_category)
+        generate_guides(cfg, count=max(1, args.guide_count),
+                        category_override=args.guide_category,
+                        topic=args.guide_topic)
         write_pr_description()
         return
     if args.list_candidates:
