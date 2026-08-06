@@ -1,0 +1,25 @@
+name: Cancel stuck Pages deployment
+
+on:
+  workflow_dispatch:
+
+permissions:
+  pages: write
+  contents: read
+
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Cancel stuck deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/pages/deployments/c3b27e8d3f8cf3ce93d2da950f6e8a3d42b4898c/cancel" \
+            --fail-with-body
