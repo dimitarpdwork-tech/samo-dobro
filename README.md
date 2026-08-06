@@ -3,7 +3,7 @@
 Only good news from Bulgaria. A pipeline reads trusted sources, shortlists the
 genuinely positive stories, and a human - not a schedule — decides which ones
 get written. Selected stories are drafted in Bulgarian with the source credited
-and linked, then reviewed again in a pull request before anything goes live.
+and linked, then reviewed again in a pull request before anything goes live. 
 
 Static site, free hosting, no servers.
 
