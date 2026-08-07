@@ -173,12 +173,19 @@ def main() -> int:
     # be cut off before producing any JSON at all. Output tokens are billed
     # only for what is actually generated, so a generous ceiling costs nothing
     # on a normal run.
-    token_budget = max(4000, 1200 + shortlist_size * 220)
+    # Two independent guards, because losing a whole day's shortlist to a
+    # truncated response is expensive and the failure is silent:
+    #   1. prefill "[" — the model cannot preamble its way past the ceiling;
+    #   2. a ceiling with real slack. Output is billed on tokens generated,
+    #      not on the ceiling, so headroom is free on every normal run and
+    #      only matters on the run that would otherwise have been lost.
+    token_budget = max(8000, 1500 + shortlist_size * 400)
     raw = pipeline.call_claude(
         cfg,
         prompt,
         max_tokens_override=token_budget,
         hard_fail=True,
+        prefill="[",
     )
     picks = pipeline.parse_selection(raw)
 
