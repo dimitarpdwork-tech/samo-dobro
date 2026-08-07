@@ -1115,7 +1115,8 @@ def parse_delimited_article(raw: str) -> dict | None:
 
 
 def call_claude(cfg: dict, prompt: str, tools: list[dict] | None = None,
-                 max_tokens_override: int | None = None, hard_fail: bool = True) -> str:
+                 max_tokens_override: int | None = None, hard_fail: bool = True,
+                 prefill: str | None = None) -> str:
     """hard_fail=True (default): unrecoverable failure exits the whole process —
     correct for single must-succeed calls like the daily selection phase.
     hard_fail=False: unrecoverable failure returns "" instead — required for
@@ -1137,6 +1138,15 @@ def call_claude(cfg: dict, prompt: str, tools: list[dict] | None = None,
         "max_tokens": max_tokens_override or cfg.get("max_tokens", 16000),
         "messages": [{"role": "user", "content": prompt}],
     }
+    if prefill:
+        # Put the opening bracket in the model's mouth. "Respond with JSON and
+        # nothing else" is a request; a prefilled assistant turn is a
+        # constraint — the model can only continue from it, so there is no
+        # room for a preamble. This is not a style preference: with 200
+        # candidates to weigh, a run burned its entire output budget
+        # deliberating and was cut off before emitting a single bracket, and
+        # the whole day's shortlist came back empty.
+        body["messages"].append({"role": "assistant", "content": prefill})
     if tools:
         # web_search is a server-side tool: the API executes searches and feeds
         # results back to the model internally, returning one final response
@@ -1169,6 +1179,11 @@ def call_claude(cfg: dict, prompt: str, tools: list[dict] | None = None,
                 return ""
             resp.raise_for_status()
             data = resp.json()
+            if prefill:
+                for blk in data.get("content", []):
+                    if blk.get("type") == "text":
+                        blk["text"] = prefill + blk.get("text", "")
+                        break
             if data.get("stop_reason") == "max_tokens":
                 print("  [api] WARNING: response hit the max_tokens ceiling and was "
                       "truncated — some stories in this batch may be lost. Consider "
