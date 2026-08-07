@@ -444,6 +444,15 @@ def fetch_feed(feed: dict, window_hours: int) -> list[dict]:
     everything it didn't shortlist as seen, so a wide window drains to zero
     after the first run rather than re-offering the same backlog daily."""
     window_hours = int(feed.get("window_hours", window_hours))
+    # How many entries to keep from one feed. A municipality posting three
+    # items a week is fully covered by 12; a broad Google News topic query
+    # returns ~100 and hitting the cap means the first 12 in Google's own
+    # order are taken and the rest discarded UNSCORED — an arbitrary sample
+    # rather than the best of the pool. Collecting more costs nothing: the
+    # scorer is local and free, and max_candidates truncates by merit
+    # afterwards, so a wider intake here only gives the ranking more to
+    # choose from.
+    max_entries = int(feed.get("max_entries", 30 if feed.get("aggregator") else 12))
     resp = http_get(
         feed["url"], timeout=15,
         accept="application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
@@ -451,7 +460,7 @@ def fetch_feed(feed: dict, window_hours: int) -> list[dict]:
     parsed = feedparser.parse(resp.content)
     cutoff = datetime.now(timezone.utc) - timedelta(hours=window_hours)
     out = []
-    for e in parsed.entries[:25]:
+    for e in parsed.entries[: max(25, max_entries * 2)]:
         published = None
         for key in ("published_parsed", "updated_parsed"):
             if getattr(e, key, None):
@@ -505,7 +514,7 @@ def fetch_feed(feed: dict, window_hours: int) -> list[dict]:
                 ),
             }
         )
-        if len(out) >= 12:
+        if len(out) >= max_entries:
             break
     return out
 
