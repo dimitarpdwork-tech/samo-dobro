@@ -148,6 +148,7 @@ def load_seen() -> dict:
         seen.setdefault("ids", [])
         seen.setdefault("dismissed", [])
         seen.setdefault("animal_hold", {})
+        seen.setdefault("strong_hold", {})
         return seen
     return {"ids": [], "dismissed": [], "animal_hold": {}}
 
@@ -176,28 +177,69 @@ def hold_animal_candidate(seen: dict, cand_id: str) -> None:
     hold.setdefault(cand_id, datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
 
 
+def hold_strong_candidate(cfg: dict, seen: dict, cand_id: str) -> None:
+    """Park a high-scoring NON-animal candidate that missed the shortlist.
+
+    Same failure mode as the animal case, one step wider. A shortlist has a
+    fixed size, so on a loud news day a genuinely good story can place 20th
+    and be burned forever — not because it was weak, but because that day was
+    crowded. Measured against the published archive, the median article this
+    site actually publishes scores 6, and there is a sharp cliff between 8 and
+    9; holding at 9 parks roughly the top 13%, a handful a day, rather than
+    half the feed.
+
+    The pool is capped: without a cap a quiet-but-never-quite-good-enough
+    backlog would accumulate and crowd fresh news out of the ranking, which
+    would defeat the point of running a news site."""
+    cr = cfg.get("candidate_ranking") or {}
+    hold = seen.setdefault("strong_hold", {})
+    hold.setdefault(cand_id, datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    cap = int(cr.get("strong_hold_max", 150))
+    if len(hold) > cap:
+        # Drop the oldest entries into the normal seen list.
+        for cid, _ in sorted(hold.items(), key=lambda kv: kv[1])[: len(hold) - cap]:
+            hold.pop(cid, None)
+            if cid not in seen.get("ids", []):
+                seen.setdefault("ids", []).append(cid)
+
+
+def should_hold_candidate(cfg: dict, cand: dict) -> bool:
+    """True when a passed-over non-animal candidate is strong enough to keep."""
+    cr = cfg.get("candidate_ranking") or {}
+    threshold = int(cr.get("hold_score_threshold", 9))
+    score, hard_drop, _ = score_candidate(cfg, cand)
+    return (not hard_drop) and score >= threshold
+
+
 def expire_animal_holds(cfg: dict, seen: dict) -> int:
     """Safety valve. Without one, an item sitting on a scraped listing page
-    would be re-offered forever. After animal_hold_days it graduates to the
-    normal seen list. Returns how many expired."""
-    days = int((cfg.get("candidate_ranking") or {}).get("animal_hold_days", 45))
-    hold = seen.get("animal_hold") or {}
-    if not hold:
-        return 0
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    expired = []
-    for cand_id, first_seen in list(hold.items()):
-        try:
-            ts = datetime.strptime(first_seen, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        except Exception:
-            ts = cutoff  # unparseable -> expire it
-        if ts <= cutoff:
-            expired.append(cand_id)
-    for cand_id in expired:
-        hold.pop(cand_id, None)
-        if cand_id not in seen.get("ids", []):
-            seen.setdefault("ids", []).append(cand_id)
-    return len(expired)
+    would be re-offered forever. After the bucket's hold period it graduates
+    to the normal seen list. Returns how many expired across both buckets."""
+    cr = cfg.get("candidate_ranking") or {}
+    buckets = (
+        ("animal_hold", int(cr.get("animal_hold_days", 45))),
+        ("strong_hold", int(cr.get("strong_hold_days", 21))),
+    )
+    total = 0
+    for bucket, days in buckets:
+        hold = seen.get(bucket) or {}
+        if not hold:
+            continue
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        expired = []
+        for cand_id, first_seen in list(hold.items()):
+            try:
+                ts = datetime.strptime(first_seen, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            except Exception:
+                ts = cutoff  # unparseable -> expire it
+            if ts <= cutoff:
+                expired.append(cand_id)
+        for cand_id in expired:
+            hold.pop(cand_id, None)
+            if cand_id not in seen.get("ids", []):
+                seen.setdefault("ids", []).append(cand_id)
+        total += len(expired)
+    return total
 
 
 def save_seen(seen: dict) -> None:
@@ -403,15 +445,35 @@ def fetch_feed(feed: dict, window_hours: int) -> list[dict]:
             continue
         article_link = getattr(e, "link", "")
 
+        # Aggregator feeds (Google News topic search) carry somebody else's
+        # story: the <link> is a news.google.com redirect and the feed URL's
+        # host is the aggregator, not the publisher. Left alone, every such
+        # story would be filed as "news.google.com". The per-entry <source>
+        # element names the real publisher, so unwrap it here and let the
+        # host check pass through to that instead. Google also appends
+        # " - Publisher" to every title; strip it so the headline the editor
+        # reads is the headline the publisher wrote.
+        entry_source_host = ""
+        if feed.get("aggregator"):
+            src = getattr(e, "source", None)
+            src_href = getattr(src, "href", "") if src else ""
+            src_name = getattr(src, "title", "") if src else ""
+            if src_href:
+                entry_source_host = normalize_host(src_href)
+            if src_name and title.endswith(f" - {src_name}"):
+                title = title[: -len(f" - {src_name}")].strip()
+
         out.append(
             {
                 "id": entry_id(article_link, title),
                 "title": title,
                 "summary": clean_text(getattr(e, "summary", "")),
                 "link": article_link,
-                "source": feed["name"],
-                "expected_source_host": normalize_host(feed["url"]),
-                "allow_external_links": bool(feed.get("allow_external_links", False)),
+                "source": (src_name or feed["name"]) if feed.get("aggregator") else feed["name"],
+                "expected_source_host": entry_source_host or normalize_host(feed["url"]),
+                "allow_external_links": bool(
+                    feed.get("allow_external_links", False) or feed.get("aggregator", False)
+                ),
                 "source_published": (
                     published.strftime("%Y-%m-%dT%H:%M:%SZ")
                     if published
