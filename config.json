@@ -198,7 +198,8 @@
     "hold_score_threshold": 9,
     "strong_hold_days": 21,
     "strong_hold_max": 400,
-    "seen_ids_max": 15000
+    "seen_ids_max": 15000,
+    "cap_per_feed": 10
   },
   "animal_keywords": [
     "куче",
