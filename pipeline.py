@@ -43,6 +43,7 @@ except ImportError:
 ROOT = Path(__file__).resolve().parent
 CONTENT_DIR = ROOT / "content" / "articles"
 SEEN_FILE = ROOT / "content" / "seen.json"
+LAST_STOP_REASON = None  # stop_reason of the most recent call_claude response
 _SEEN_CAP = 4000  # overridden from config by load_seen()
 PR_DESCRIPTION_FILE = ROOT / "pr_description.md"
 
@@ -1115,8 +1116,7 @@ def parse_delimited_article(raw: str) -> dict | None:
 
 
 def call_claude(cfg: dict, prompt: str, tools: list[dict] | None = None,
-                 max_tokens_override: int | None = None, hard_fail: bool = True,
-                 prefill: str | None = None) -> str:
+                 max_tokens_override: int | None = None, hard_fail: bool = True) -> str:
     """hard_fail=True (default): unrecoverable failure exits the whole process —
     correct for single must-succeed calls like the daily selection phase.
     hard_fail=False: unrecoverable failure returns "" instead — required for
@@ -1138,15 +1138,7 @@ def call_claude(cfg: dict, prompt: str, tools: list[dict] | None = None,
         "max_tokens": max_tokens_override or cfg.get("max_tokens", 16000),
         "messages": [{"role": "user", "content": prompt}],
     }
-    if prefill:
-        # Put the opening bracket in the model's mouth. "Respond with JSON and
-        # nothing else" is a request; a prefilled assistant turn is a
-        # constraint — the model can only continue from it, so there is no
-        # room for a preamble. This is not a style preference: with 200
-        # candidates to weigh, a run burned its entire output budget
-        # deliberating and was cut off before emitting a single bracket, and
-        # the whole day's shortlist came back empty.
-        body["messages"].append({"role": "assistant", "content": prefill})
+
     if tools:
         # web_search is a server-side tool: the API executes searches and feeds
         # results back to the model internally, returning one final response
@@ -1179,11 +1171,14 @@ def call_claude(cfg: dict, prompt: str, tools: list[dict] | None = None,
                 return ""
             resp.raise_for_status()
             data = resp.json()
-            if prefill:
-                for blk in data.get("content", []):
-                    if blk.get("type") == "text":
-                        blk["text"] = prefill + blk.get("text", "")
-                        break
+            # Reasoning models spend max_tokens on thinking BEFORE any text
+            # block exists, so a ceiling sized for the JSON alone can be
+            # consumed entirely without producing a single character of
+            # output. Record the stop reason so callers can distinguish
+            # "the model chose nothing" from "the model never got to answer"
+            # — those look identical downstream and need opposite responses.
+            global LAST_STOP_REASON
+            LAST_STOP_REASON = data.get("stop_reason")
             if data.get("stop_reason") == "max_tokens":
                 print("  [api] WARNING: response hit the max_tokens ceiling and was "
                       "truncated — some stories in this batch may be lost. Consider "
