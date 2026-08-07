@@ -9,7 +9,10 @@
   "base_path": "",
   "brand": "sun",
   "article_prefix": "novina",
-  "facebook": { "start": "2026-07-27", "max_per_run": 5 },
+  "facebook": {
+    "start": "2026-07-27",
+    "max_per_run": 5
+  },
   "about_path": "za-nas",
   "privacy_path": "poveritelnost",
   "google_site_verification": "bJKGT-YeWvk3nfXNph9lC9S4RKei3t1fopzuOoKfpSg",
@@ -82,49 +85,144 @@
     "_comment": "Cheap local pre-filter that runs BEFORE any paid call. Its job is to RANK, not to censor: only the multi-word admin phrases below are ever hard-dropped. Single negative words merely lower a score, because 'Полицаи спасиха щъркел от пожара' and '87 пожара - без нито един загинал' are both good news that a naive keyword blocklist would have thrown away (verified against the published archive).",
     "animal_bonus": 6,
     "animal_hold_days": 45,
-    "max_candidates": 40,
-    "cap_per_source": 3,
+    "max_candidates": 65,
+    "cap_per_source": 4,
     "cap_per_municipal_source": 1,
     "max_municipal_total": 12,
     "priority_sources": [
-      "БТА", "БНР — Живот", "Дневник", "24 часа", "Actualno",
-      "Animal Rescue Sofia", "Спасителен център за диви животни — Зелени Балкани",
-      "ОПБК Варна — общински приют", "ОПБК Бургас — общински приют",
-      "ОП Екоравновесие — София", "ЧЕТИРИ ЛАПИ България",
-      "Министерски съвет", "Народно събрание"
+      "БТА",
+      "БНР — Живот",
+      "Дневник",
+      "24 часа",
+      "Actualno",
+      "Animal Rescue Sofia",
+      "Спасителен център за диви животни — Зелени Балкани",
+      "ОПБК Варна — общински приют",
+      "ОПБК Бургас — общински приют",
+      "ОП Екоравновесие — София",
+      "ЧЕТИРИ ЛАПИ България",
+      "Министерски съвет",
+      "Народно събрание",
+      "Plovdiv24",
+      "Sofia24",
+      "Varna24",
+      "Burgas24",
+      "Ruse24",
+      "Blagoevgrad24",
+      "Zagora24"
     ],
     "admin_phrases": [
-      "обществена поръчка", "заседание на общински съвет",
-      "график за сметосъбиране", "публичен търг", "процедура по възлагане",
-      "временно прекъсване на водоподаване", "обявява конкурс за длъжност",
-      "дневен ред на заседание", "проект на наредба"
+      "обществена поръчка",
+      "заседание на общински съвет",
+      "график за сметосъбиране",
+      "публичен търг",
+      "процедура по възлагане",
+      "временно прекъсване на водоподаване",
+      "обявява конкурс за длъжност",
+      "дневен ред на заседание",
+      "проект на наредба"
     ],
     "negative_keywords": [
-      "загина", "загинал", "смърт", "смъртн", "катастроф", "убийств", "убит",
-      "арестув", "обвинен", "война", "военн", "бедстви", "земетресени",
-      "наводнени", "жертви", "ранени", "насили", "жестокост", "измама",
-      "корупц", "скандал", "почина", "отровен", "бракониер",
-      "загубено куче", "изгубено куче", "изгубена котка", "намерено куче",
-      "помогнете да намерим", "търси се стопанин", "издирва се",
-      "търси дом", "търси постоянен дом", "спешно се нуждае",
-      "набира средства", "дарителска кампания", "нуждае се от помощ",
-      "търси се гледач", "обявява свободно работно място"
+      "загина",
+      "загинал",
+      "смърт",
+      "смъртн",
+      "катастроф",
+      "убийств",
+      "убит",
+      "арестув",
+      "обвинен",
+      "война",
+      "военн",
+      "бедстви",
+      "земетресени",
+      "наводнени",
+      "жертви",
+      "ранени",
+      "насили",
+      "жестокост",
+      "измама",
+      "корупц",
+      "скандал",
+      "почина",
+      "отровен",
+      "бракониер",
+      "загубено куче",
+      "изгубено куче",
+      "изгубена котка",
+      "намерено куче",
+      "помогнете да намерим",
+      "търси се стопанин",
+      "издирва се",
+      "търси дом",
+      "търси постоянен дом",
+      "спешно се нуждае",
+      "набира средства",
+      "дарителска кампания",
+      "нуждае се от помощ",
+      "търси се гледач",
+      "обявява свободно работно място"
     ],
     "positive_keywords": [
-      "спас", "осинов", "дарен", "доброволц", "награда", "награди", "откри",
-      "възстанов", "безплат", "излекув", "изцеле", "рекорд", "успех",
-      "стипенди", "върнат в природата", "пуснат на свобода", "помог",
-      "намери дом", "нов дом", "осиновен", "осиновиха", "приютът",
-      "кастрац", "чипиран", "щастлив край",
-      "подкреп", "обнови", "нов парк", "първо място", "шампион"
-    ]
+      "спас",
+      "осинов",
+      "дарен",
+      "доброволц",
+      "награда",
+      "награди",
+      "откри",
+      "възстанов",
+      "безплат",
+      "излекув",
+      "изцеле",
+      "рекорд",
+      "успех",
+      "стипенди",
+      "върнат в природата",
+      "пуснат на свобода",
+      "помог",
+      "намери дом",
+      "нов дом",
+      "осиновен",
+      "осиновиха",
+      "приютът",
+      "кастрац",
+      "чипиран",
+      "щастлив край",
+      "подкреп",
+      "обнови",
+      "нов парк",
+      "първо място",
+      "шампион"
+    ],
+    "hold_score_threshold": 9,
+    "strong_hold_days": 21,
+    "strong_hold_max": 150
   },
   "animal_keywords": [
-    "куче", "котк", "котен", "животн", "приют", "осинов",
-    "ветеринар", "щъркел", "лешояд", "костенурк", "птиц",
-    "делфин", "мечк", "магаре", "зоопарк", "кастрац", "кастрир",
-    "диви животни", "бездомни животни", "гнездо",
-    "върнат в природата", "пуснат на свобода", "птичи"
+    "куче",
+    "котк",
+    "котен",
+    "животн",
+    "приют",
+    "осинов",
+    "ветеринар",
+    "щъркел",
+    "лешояд",
+    "костенурк",
+    "птиц",
+    "делфин",
+    "мечк",
+    "магаре",
+    "зоопарк",
+    "кастрац",
+    "кастрир",
+    "диви животни",
+    "бездомни животни",
+    "гнездо",
+    "върнат в природата",
+    "пуснат на свобода",
+    "птичи"
   ],
   "known_cities": {
     "sofiya": "София",
@@ -160,7 +258,9 @@
     "samokov": "Самоков",
     "petrich": "Петрич"
   },
-  "same_as": ["https://www.facebook.com/dobrodelo"],
+  "same_as": [
+    "https://www.facebook.com/dobrodelo"
+  ],
   "byline_name": "AI редакция на Добро Дело",
   "editor_name": "Димитър Иванов",
   "operator_city": "Варна",
@@ -171,7 +271,7 @@
   "model": "claude-sonnet-5",
   "context_search": false,
   "max_new_per_run": 10,
-  "window_hours": 24,
+  "window_hours": 30,
   "fonts": {
     "display": "'Sofia Sans', system-ui, sans-serif",
     "body": "'Sofia Sans', system-ui, sans-serif",
@@ -351,7 +451,13 @@
       "url": "https://opbk.burgas.bg/",
       "link_pattern": "opbk.burgas.bg/info/",
       "min_title_chars": 30,
-      "link_exclude": ["/page/", "/sites/", "/adopt-dogs", "/adopted-dogs", "/initsiativi"]
+      "link_exclude": [
+        "/page/",
+        "/sites/",
+        "/adopt-dogs",
+        "/adopted-dogs",
+        "/initsiativi"
+      ]
     },
     {
       "name": "ОП Екоравновесие — София",
@@ -371,14 +477,40 @@
       "min_title_chars": 35,
       "max_items": 6,
       "link_exclude": [
-        "/en/", "/page/", "?page=", "?year=", "/novini", "/news-3-13",
-        "/about-us", "/our-team", "/staff", "/volunteers", "/results",
-        "/annual-reports", "/publications", "/awards", "/media",
-        "/watch-live", "/activities", "/animal-in-trouble", "/vet-cares",
-        "/breeding-programme", "/release-back-into-the-wild", "/education",
-        "/help-us", "/make-a-donation", "/donation", "/payment",
-        "/adopt-an-animal", "/become-a-part", "/donors", "/partners",
-        "/contacts", "/wild-animal-in-distress", "/images/", "/templates/"
+        "/en/",
+        "/page/",
+        "?page=",
+        "?year=",
+        "/novini",
+        "/news-3-13",
+        "/about-us",
+        "/our-team",
+        "/staff",
+        "/volunteers",
+        "/results",
+        "/annual-reports",
+        "/publications",
+        "/awards",
+        "/media",
+        "/watch-live",
+        "/activities",
+        "/animal-in-trouble",
+        "/vet-cares",
+        "/breeding-programme",
+        "/release-back-into-the-wild",
+        "/education",
+        "/help-us",
+        "/make-a-donation",
+        "/donation",
+        "/payment",
+        "/adopt-an-animal",
+        "/become-a-part",
+        "/donors",
+        "/partners",
+        "/contacts",
+        "/wild-animal-in-distress",
+        "/images/",
+        "/templates/"
       ]
     },
     {
@@ -394,204 +526,36 @@
       "link_pattern": "/en/post/"
     },
     {
-      "name": "Община Антон",
-      "url": "https://antonbg.eu/feed/"
-    },
-    {
-      "name": "Община Антоново",
-      "url": "https://antonovo.bg/?feed=rss2"
-    },
-    {
-      "name": "Община Баните",
-      "url": "https://visitbanite.bg/feed/"
-    },
-    {
-      "name": "Община Белене",
-      "url": "https://belene.bg/feed/"
-    },
-    {
-      "name": "Община Белово",
-      "url": "https://belovo.bg/feed/"
-    },
-    {
       "name": "Община Берковица",
       "url": "https://www.berkovitsa.bg/feed/"
-    },
-    {
-      "name": "Община Бобошево",
-      "url": "https://obshtina-boboshevo.eu/rss.xml"
-    },
-    {
-      "name": "Община Божурище",
-      "url": "https://www.bozhurishte.bg/feed/"
-    },
-    {
-      "name": "Община Борован",
-      "url": "https://www.borovan.bg/feed"
-    },
-    {
-      "name": "Община Брегово",
-      "url": "https://bregovo.bg/feed"
-    },
-    {
-      "name": "Община Варна",
-      "url": "https://varna.bg/bg/rss"
-    },
-    {
-      "name": "Община Велинград",
-      "url": "https://m.velingrad.bg/?feed=rss2"
-    },
-    {
-      "name": "Община Венец",
-      "url": "https://venets.bg/feed/"
-    },
-    {
-      "name": "Община Горна Малина",
-      "url": "https://www.gornamalina.bg/?feed=rss2"
-    },
-    {
-      "name": "Община Грамада",
-      "url": "https://obshtina-gramada.com/bg/feed/"
-    },
-    {
-      "name": "Община Гулянци",
-      "url": "https://gulyantsi.bg/bg/?format=feed&type=rss"
-    },
-    {
-      "name": "Община Гурково",
-      "url": "https://www.gurkovo.bg/feed.xml"
-    },
-    {
-      "name": "Община Девин",
-      "url": "https://www.devin.bg/index.php?format=feed&type=rss"
-    },
-    {
-      "name": "Община Димово",
-      "url": "https://dimovo.bg/feed/"
-    },
-    {
-      "name": "Община Дулово",
-      "url": "https://dulovo.bg/feed/"
-    },
-    {
-      "name": "Община Златица",
-      "url": "https://zlatitsa.com/feed/"
     },
     {
       "name": "Община Ивайловград",
       "url": "https://ivaylovgrad.bg/feed/"
     },
     {
-      "name": "Община Искър",
-      "url": "https://iskarbg.bg/feed/"
-    },
-    {
-      "name": "Община Ихтиман",
-      "url": "https://ihtiman.bg/?feed=rss2"
-    },
-    {
-      "name": "Община Каолиново",
-      "url": "https://kaolinovo.bg/?feed=rss2"
-    },
-    {
       "name": "Община Котел",
       "url": "https://kotel.bg/feed/"
-    },
-    {
-      "name": "Община Лесичово",
-      "url": "https://www.lesichovo.bg/index.php?format=feed&type=rss"
-    },
-    {
-      "name": "Община Лозница",
-      "url": "https://loznitsa.bg/?feed=rss2"
-    },
-    {
-      "name": "Община Макреш",
-      "url": "http://makreshbg.com/feed/"
-    },
-    {
-      "name": "Община Мирково",
-      "url": "https://www.mirkovo.bg/?format=feed&type=rss"
-    },
-    {
-      "name": "Община Мъглиж",
-      "url": "https://maglizh.bg/feed/"
     },
     {
       "name": "Община Неделино",
       "url": "https://nedelino.bg/feed/"
     },
     {
-      "name": "Община Никола Козлево",
-      "url": "https://nov.nikolakozlevo.bg/?feed=rss2"
-    },
-    {
-      "name": "Община Ново село",
-      "url": "https://obshtina-novoselo.com/bg/?feed=rss2"
-    },
-    {
-      "name": "Община Опака",
-      "url": "https://opaka.bg/feed/"
-    },
-    {
-      "name": "Община Перник",
-      "url": "https://pernik.bg/feed/"
-    },
-    {
-      "name": "Община Пещера",
-      "url": "https://www.peshtera.bg/index.php?format=feed&type=rss"
-    },
-    {
       "name": "Община Поморие",
       "url": "https://www.pomorie.bg/feed/"
-    },
-    {
-      "name": "Община Попово",
-      "url": "http://popovo.bg/bg/index.php?format=feed&type=rss"
     },
     {
       "name": "Община Приморско",
       "url": "https://primorsko.bg/feed/"
     },
     {
-      "name": "Община Разград",
-      "url": "https://razgrad.bg/?format=feed&type=rss"
-    },
-    {
-      "name": "Община Ружинци",
-      "url": "http://obshtina-ruzhintsi.com/feed/"
-    },
-    {
-      "name": "Община Садово",
-      "url": "https://sadovo.bg/feed/"
-    },
-    {
       "name": "Община Своге",
       "url": "https://www.svoge.bg/?feed=rss2"
     },
     {
-      "name": "Община Симитли",
-      "url": "https://simitli.bg/index.php?format=feed&type=rss&lang=bg"
-    },
-    {
-      "name": "Община Сопот",
-      "url": "http://www.sopot-municipality.com/joomla/index.php?format=feed&type=rss"
-    },
-    {
-      "name": "Община Стралджа",
-      "url": "https://straldzha.bg/feed/"
-    },
-    {
       "name": "Община Стрелча",
       "url": "https://strelcha.bg/?feed=rss2"
-    },
-    {
-      "name": "Община Тетевен",
-      "url": "http://www.teteven.bg/index.php?format=feed&type=rss"
-    },
-    {
-      "name": "Община Тополовград",
-      "url": "https://topolovgrad.bg/feed/"
     },
     {
       "name": "Община Трявна",
@@ -606,20 +570,130 @@
       "url": "https://shabla.bg/feed/"
     },
     {
-      "name": "Община Якимово",
-      "url": "http://www.iakimovo.org/index.php?format=feed&type=rss"
-    },
-    {
-      "name": "Община Якоруда",
-      "url": "https://yakoruda.bg/feed/"
-    },
-    {
       "name": "24 часа",
       "url": "https://www.24chasa.bg/rss"
     },
     {
       "name": "Дневник",
       "url": "https://www.dnevnik.bg/rss/"
+    },
+    {
+      "name": "Plovdiv24",
+      "url": "https://www.plovdiv24.bg/rss.php"
+    },
+    {
+      "name": "Sofia24",
+      "url": "https://www.sofia24.bg/rss.php"
+    },
+    {
+      "name": "Varna24",
+      "url": "https://www.varna24.bg/rss.php"
+    },
+    {
+      "name": "Burgas24",
+      "url": "https://www.burgas24.bg/rss.php"
+    },
+    {
+      "name": "Ruse24",
+      "url": "https://www.ruse24.bg/rss.php"
+    },
+    {
+      "name": "Blagoevgrad24",
+      "url": "https://www.blagoevgrad24.bg/rss.php"
+    },
+    {
+      "name": "Zagora24",
+      "url": "https://www.zagora24.bg/rss.php"
+    },
+    {
+      "name": "Google News — Спасени животни",
+      "url": "https://news.google.com/rss/search?q=%D1%81%D0%BF%D0%B0%D1%81%D0%B5%D0%BD%D0%BE%20%D0%BA%D1%83%D1%87%D0%B5%20OR%20%D1%81%D0%BF%D0%B0%D1%81%D0%B5%D0%BD%D0%B0%20%D0%BA%D0%BE%D1%82%D0%BA%D0%B0%20OR%20%D1%81%D0%BF%D0%B0%D1%81%D0%B5%D0%BD%D0%BE%20%D0%B6%D0%B8%D0%B2%D0%BE%D1%82%D0%BD%D0%BE%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "aggregator": true,
+      "window_hours": 48
+    },
+    {
+      "name": "Google News — Приюти и осиновяване",
+      "url": "https://news.google.com/rss/search?q=%D0%BF%D1%80%D0%B8%D1%8E%D1%82%20%D0%B7%D0%B0%20%D0%BA%D1%83%D1%87%D0%B5%D1%82%D0%B0%20OR%20%D0%BE%D1%81%D0%B8%D0%BD%D0%BE%D0%B2%D1%8F%D0%B2%D0%B0%D0%BD%D0%B5%20%D0%B6%D0%B8%D0%B2%D0%BE%D1%82%D0%BD%D0%BE%20OR%20%D0%BA%D0%B0%D1%81%D1%82%D1%80%D0%B0%D1%86%D0%B8%D1%8F%20%D0%B1%D0%B5%D0%B7%D0%BF%D0%BB%D0%B0%D1%82%D0%BD%D0%B0%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "aggregator": true,
+      "window_hours": 48
+    },
+    {
+      "name": "Google News — Диви животни",
+      "url": "https://news.google.com/rss/search?q=%D1%89%D1%8A%D1%80%D0%BA%D0%B5%D0%BB%20OR%20%D0%BB%D0%B5%D1%88%D0%BE%D1%8F%D0%B4%20OR%20%D0%BA%D0%BE%D1%81%D1%82%D0%B5%D0%BD%D1%83%D1%80%D0%BA%D0%B0%20OR%20%D0%B4%D0%B5%D0%BB%D1%84%D0%B8%D0%BD%20%D1%81%D0%BF%D0%B0%D1%81%D0%B5%D0%BD%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "aggregator": true,
+      "window_hours": 48
+    },
+    {
+      "name": "Google News — Дарения и кампании",
+      "url": "https://news.google.com/rss/search?q=%D0%B4%D0%B0%D1%80%D0%B5%D0%BD%D0%B8%D0%B5%20%D0%B1%D0%BE%D0%BB%D0%BD%D0%B8%D1%86%D0%B0%20OR%20%D0%B4%D0%B0%D1%80%D0%B8%D1%82%D0%B5%D0%BB%D1%81%D0%BA%D0%B0%20%D0%BA%D0%B0%D0%BC%D0%BF%D0%B0%D0%BD%D0%B8%D1%8F%20%D1%83%D1%81%D0%BF%D0%B5%D1%88%D0%BD%D0%B0%20OR%20%D1%81%D1%8A%D0%B1%D1%80%D0%B0%D1%85%D0%B0%20%D1%81%D1%80%D0%B5%D0%B4%D1%81%D1%82%D0%B2%D0%B0%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "aggregator": true,
+      "window_hours": 48
+    },
+    {
+      "name": "Google News — Доброволци",
+      "url": "https://news.google.com/rss/search?q=%D0%B4%D0%BE%D0%B1%D1%80%D0%BE%D0%B2%D0%BE%D0%BB%D1%86%D0%B8%20%D0%BF%D0%BE%D1%87%D0%B8%D1%81%D1%82%D0%B8%D1%85%D0%B0%20OR%20%D0%B4%D0%BE%D0%B1%D1%80%D0%BE%D0%B2%D0%BE%D0%BB%D1%87%D0%B5%D1%81%D0%BA%D0%B0%20%D0%B8%D0%BD%D0%B8%D1%86%D0%B8%D0%B0%D1%82%D0%B8%D0%B2%D0%B0%20OR%20%D0%B4%D0%BE%D0%B1%D1%80%D0%BE%D0%B2%D0%BE%D0%BB%D1%86%D0%B8%20%D0%B7%D0%B0%D1%81%D0%B0%D0%B4%D0%B8%D1%85%D0%B0%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "aggregator": true,
+      "window_hours": 48
+    },
+    {
+      "name": "Google News — Ученици и олимпиади",
+      "url": "https://news.google.com/rss/search?q=%D0%B1%D1%8A%D0%BB%D0%B3%D0%B0%D1%80%D1%81%D0%BA%D0%B8%20%D1%83%D1%87%D0%B5%D0%BD%D0%B8%D1%86%D0%B8%20%D0%B7%D0%BB%D0%B0%D1%82%D0%B5%D0%BD%20%D0%BC%D0%B5%D0%B4%D0%B0%D0%BB%20OR%20%D0%BE%D0%BB%D0%B8%D0%BC%D0%BF%D0%B8%D0%B0%D0%B4%D0%B0%20%D0%BE%D1%82%D0%BB%D0%B8%D1%87%D0%B8%D0%B5%20%D1%83%D1%87%D0%B5%D0%BD%D0%B8%D1%86%D0%B8%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "aggregator": true,
+      "window_hours": 48
+    },
+    {
+      "name": "Google News — Наука и открития",
+      "url": "https://news.google.com/rss/search?q=%D0%B1%D1%8A%D0%BB%D0%B3%D0%B0%D1%80%D1%81%D0%BA%D0%BE%20%D0%BE%D1%82%D0%BA%D1%80%D0%B8%D1%82%D0%B8%D0%B5%20OR%20%D0%B1%D1%8A%D0%BB%D0%B3%D0%B0%D1%80%D1%81%D0%BA%D0%B8%20%D1%83%D1%87%D0%B5%D0%BD%D0%B8%20%D0%B8%D0%B7%D1%81%D0%BB%D0%B5%D0%B4%D0%B2%D0%B0%D0%BD%D0%B5%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "aggregator": true,
+      "window_hours": 48
+    },
+    {
+      "name": "Google News — Нови паркове и природа",
+      "url": "https://news.google.com/rss/search?q=%D0%BD%D0%BE%D0%B2%20%D0%BF%D0%B0%D1%80%D0%BA%20%D0%BE%D1%82%D0%BA%D1%80%D0%B8%D1%85%D0%B0%20OR%20%D0%B7%D0%B0%D1%81%D0%B0%D0%B4%D0%B8%D1%85%D0%B0%20%D0%B4%D1%8A%D1%80%D0%B2%D0%B5%D1%82%D0%B0%20OR%20%D0%B2%D1%8A%D0%B7%D1%81%D1%82%D0%B0%D0%BD%D0%BE%D0%B2%D0%B8%D1%85%D0%B0%20%D0%BF%D1%80%D0%B8%D1%80%D0%BE%D0%B4%D0%B0%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "aggregator": true,
+      "window_hours": 48
+    },
+    {
+      "name": "Google News — Реставрация и наследство",
+      "url": "https://news.google.com/rss/search?q=%D1%80%D0%B5%D1%81%D1%82%D0%B0%D0%B2%D1%80%D0%B8%D1%80%D0%B0%D1%85%D0%B0%20OR%20%D0%B2%D1%8A%D0%B7%D1%81%D1%82%D0%B0%D0%BD%D0%BE%D0%B2%D0%B8%D1%85%D0%B0%20%D1%86%D1%8A%D1%80%D0%BA%D0%B2%D0%B0%20OR%20%D0%B0%D1%80%D1%85%D0%B5%D0%BE%D0%BB%D0%BE%D0%B3%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%BE%20%D0%BE%D1%82%D0%BA%D1%80%D0%B8%D1%82%D0%B8%D0%B5%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "aggregator": true,
+      "window_hours": 48
+    },
+    {
+      "name": "Google News — Здравеопазване успехи",
+      "url": "https://news.google.com/rss/search?q=%D0%BF%D1%8A%D1%80%D0%B2%D0%B0%20%D0%BF%D0%BE%20%D1%80%D0%BE%D0%B4%D0%B0%20%D1%81%D0%B8%20%D0%BE%D0%BF%D0%B5%D1%80%D0%B0%D1%86%D0%B8%D1%8F%20OR%20%D0%BD%D0%BE%D0%B2%D0%BE%20%D0%BE%D1%82%D0%B4%D0%B5%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5%20%D0%B1%D0%BE%D0%BB%D0%BD%D0%B8%D1%86%D0%B0%20OR%20%D1%81%D0%BF%D0%B0%D1%81%D0%B8%D1%85%D0%B0%20%D0%B6%D0%B8%D0%B2%D0%BE%D1%82%D0%B0%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "aggregator": true,
+      "window_hours": 48
+    },
+    {
+      "name": "Google News — Безплатни инициативи",
+      "url": "https://news.google.com/rss/search?q=%D0%B1%D0%B5%D0%B7%D0%BF%D0%BB%D0%B0%D1%82%D0%BD%D0%B0%20%D0%B8%D0%BD%D0%B8%D1%86%D0%B8%D0%B0%D1%82%D0%B8%D0%B2%D0%B0%20OR%20%D0%B1%D0%B5%D0%B7%D0%BF%D0%BB%D0%B0%D1%82%D0%B5%D0%BD%20%D1%82%D1%80%D0%B0%D0%BD%D1%81%D0%BF%D0%BE%D1%80%D1%82%20OR%20%D0%B1%D0%B5%D0%B7%D0%BF%D0%BB%D0%B0%D1%82%D0%BD%D0%B8%20%D0%BF%D1%80%D0%B5%D0%B3%D0%BB%D0%B5%D0%B4%D0%B8%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "aggregator": true,
+      "window_hours": 48
+    },
+    {
+      "name": "Google News — Награди и признание",
+      "url": "https://news.google.com/rss/search?q=%D0%BD%D0%B0%D0%B3%D1%80%D0%B0%D0%B4%D0%B0%20%D0%B7%D0%B0%20%D0%B1%D1%8A%D0%BB%D0%B3%D0%B0%D1%80%D0%B8%D0%BD%20OR%20%D0%BE%D1%82%D0%BB%D0%B8%D1%87%D0%B8%D1%85%D0%B0%20%D0%B1%D1%8A%D0%BB%D0%B3%D0%B0%D1%80%D0%BA%D0%B0%20OR%20%D0%BF%D1%80%D0%B8%D0%B7%D0%BD%D0%B0%20%D0%B7%D0%B0%20%D0%BF%D1%80%D0%B8%D0%BD%D0%BE%D1%81%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "aggregator": true,
+      "window_hours": 48
+    },
+    {
+      "name": "Google News — Местни герои",
+      "url": "https://news.google.com/rss/search?q=%D1%81%D0%BF%D0%B0%D1%81%D0%B8%20%D0%B4%D0%B5%D1%82%D0%B5%20OR%20%D1%81%D0%BF%D0%B0%D1%81%D0%B8%20%D1%87%D0%BE%D0%B2%D0%B5%D0%BA%20OR%20%D0%BF%D0%BE%D0%BC%D0%BE%D0%B3%D0%BD%D0%B0%20%D0%BD%D0%B0%20%D0%BD%D0%B5%D0%BF%D0%BE%D0%B7%D0%BD%D0%B0%D1%82%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "aggregator": true,
+      "window_hours": 48
+    },
+    {
+      "name": "Google News — Култура и фестивали",
+      "url": "https://news.google.com/rss/search?q=%D1%84%D0%B5%D1%81%D1%82%D0%B8%D0%B2%D0%B0%D0%BB%20%D0%BE%D1%82%D0%BA%D1%80%D0%B8%D1%85%D0%B0%20OR%20%D0%BD%D0%BE%D0%B2%D0%B0%20%D0%B3%D0%B0%D0%BB%D0%B5%D1%80%D0%B8%D1%8F%20OR%20%D0%B8%D0%B7%D0%BB%D0%BE%D0%B6%D0%B1%D0%B0%20%D0%BE%D1%82%D0%BA%D1%80%D0%B8%D0%B2%D0%B0%D0%BD%D0%B5%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "aggregator": true,
+      "window_hours": 48
+    },
+    {
+      "name": "Google News — Спорт успехи",
+      "url": "https://news.google.com/rss/search?q=%D0%B1%D1%8A%D0%BB%D0%B3%D0%B0%D1%80%D1%81%D0%BA%D0%B8%20%D1%81%D0%BF%D0%BE%D1%80%D1%82%D0%B8%D1%81%D1%82%20%D1%82%D0%B8%D1%82%D0%BB%D0%B0%20OR%20%D0%B5%D0%B2%D1%80%D0%BE%D0%BF%D0%B5%D0%B9%D1%81%D0%BA%D0%B0%20%D1%82%D0%B8%D1%82%D0%BB%D0%B0%20%D0%B1%D1%8A%D0%BB%D0%B3%D0%B0%D1%80%D0%B8%D1%8F%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "aggregator": true,
+      "window_hours": 48
     }
   ]
 }
