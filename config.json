@@ -85,7 +85,7 @@
     "_comment": "Cheap local pre-filter that runs BEFORE any paid call. Its job is to RANK, not to censor: only the multi-word admin phrases below are ever hard-dropped. Single negative words merely lower a score, because 'Полицаи спасиха щъркел от пожара' and '87 пожара - без нито един загинал' are both good news that a naive keyword blocklist would have thrown away (verified against the published archive).",
     "animal_bonus": 6,
     "animal_hold_days": 45,
-    "max_candidates": 65,
+    "max_candidates": 200,
     "cap_per_source": 4,
     "cap_per_municipal_source": 1,
     "max_municipal_total": 12,
@@ -197,7 +197,8 @@
     ],
     "hold_score_threshold": 9,
     "strong_hold_days": 21,
-    "strong_hold_max": 150
+    "strong_hold_max": 400,
+    "seen_ids_max": 15000
   },
   "animal_keywords": [
     "куче",
@@ -608,92 +609,92 @@
       "url": "https://www.zagora24.bg/rss.php"
     },
     {
-      "name": "Google News — Спасени животни",
-      "url": "https://news.google.com/rss/search?q=%D1%81%D0%BF%D0%B0%D1%81%D0%B5%D0%BD%D0%BE%20%D0%BA%D1%83%D1%87%D0%B5%20OR%20%D1%81%D0%BF%D0%B0%D1%81%D0%B5%D0%BD%D0%B0%20%D0%BA%D0%BE%D1%82%D0%BA%D0%B0%20OR%20%D1%81%D0%BF%D0%B0%D1%81%D0%B5%D0%BD%D0%BE%20%D0%B6%D0%B8%D0%B2%D0%BE%D1%82%D0%BD%D0%BE%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "name": "Google News — Спасяване",
+      "url": "https://news.google.com/rss/search?q=%D1%81%D0%BF%D0%B0%D1%81%D0%B8%20OR%20%D1%81%D0%BF%D0%B0%D1%81%D0%B8%D1%85%D0%B0%20OR%20%D1%81%D0%BF%D0%B0%D1%81%D0%B5%D0%BD%20OR%20%D1%81%D0%BF%D0%B0%D1%81%D0%B5%D0%BD%D0%BE%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
       "aggregator": true,
       "window_hours": 48
     },
     {
-      "name": "Google News — Приюти и осиновяване",
-      "url": "https://news.google.com/rss/search?q=%D0%BF%D1%80%D0%B8%D1%8E%D1%82%20%D0%B7%D0%B0%20%D0%BA%D1%83%D1%87%D0%B5%D1%82%D0%B0%20OR%20%D0%BE%D1%81%D0%B8%D0%BD%D0%BE%D0%B2%D1%8F%D0%B2%D0%B0%D0%BD%D0%B5%20%D0%B6%D0%B8%D0%B2%D0%BE%D1%82%D0%BD%D0%BE%20OR%20%D0%BA%D0%B0%D1%81%D1%82%D1%80%D0%B0%D1%86%D0%B8%D1%8F%20%D0%B1%D0%B5%D0%B7%D0%BF%D0%BB%D0%B0%D1%82%D0%BD%D0%B0%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "name": "Google News — Приюти и животни",
+      "url": "https://news.google.com/rss/search?q=%D0%BF%D1%80%D0%B8%D1%8E%D1%82%20OR%20%D0%BE%D1%81%D0%B8%D0%BD%D0%BE%D0%B2%D1%8F%D0%B2%D0%B0%D0%BD%D0%B5%20OR%20%D0%B1%D0%B5%D0%B7%D0%B4%D0%BE%D0%BC%D0%BD%D0%B8%20%D0%BA%D1%83%D1%87%D0%B5%D1%82%D0%B0%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
       "aggregator": true,
       "window_hours": 48
     },
     {
       "name": "Google News — Диви животни",
-      "url": "https://news.google.com/rss/search?q=%D1%89%D1%8A%D1%80%D0%BA%D0%B5%D0%BB%20OR%20%D0%BB%D0%B5%D1%88%D0%BE%D1%8F%D0%B4%20OR%20%D0%BA%D0%BE%D1%81%D1%82%D0%B5%D0%BD%D1%83%D1%80%D0%BA%D0%B0%20OR%20%D0%B4%D0%B5%D0%BB%D1%84%D0%B8%D0%BD%20%D1%81%D0%BF%D0%B0%D1%81%D0%B5%D0%BD%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "url": "https://news.google.com/rss/search?q=%D1%89%D1%8A%D1%80%D0%BA%D0%B5%D0%BB%20OR%20%D0%BB%D0%B5%D1%88%D0%BE%D1%8F%D0%B4%20OR%20%D0%BA%D0%BE%D1%81%D1%82%D0%B5%D0%BD%D1%83%D1%80%D0%BA%D0%B0%20OR%20%D0%B4%D0%B5%D0%BB%D1%84%D0%B8%D0%BD%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
       "aggregator": true,
       "window_hours": 48
     },
     {
-      "name": "Google News — Дарения и кампании",
-      "url": "https://news.google.com/rss/search?q=%D0%B4%D0%B0%D1%80%D0%B5%D0%BD%D0%B8%D0%B5%20%D0%B1%D0%BE%D0%BB%D0%BD%D0%B8%D1%86%D0%B0%20OR%20%D0%B4%D0%B0%D1%80%D0%B8%D1%82%D0%B5%D0%BB%D1%81%D0%BA%D0%B0%20%D0%BA%D0%B0%D0%BC%D0%BF%D0%B0%D0%BD%D0%B8%D1%8F%20%D1%83%D1%81%D0%BF%D0%B5%D1%88%D0%BD%D0%B0%20OR%20%D1%81%D1%8A%D0%B1%D1%80%D0%B0%D1%85%D0%B0%20%D1%81%D1%80%D0%B5%D0%B4%D1%81%D1%82%D0%B2%D0%B0%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "name": "Google News — Дарения",
+      "url": "https://news.google.com/rss/search?q=%D0%B4%D0%B0%D1%80%D0%B5%D0%BD%D0%B8%D0%B5%20OR%20%D0%B4%D0%B0%D1%80%D0%B8%D1%82%D0%B5%D0%BB%D1%81%D0%BA%D0%B0%20OR%20%D0%B4%D0%B0%D1%80%D0%B8%D1%85%D0%B0%20OR%20%D0%B4%D0%B0%D1%80%D0%B8%D1%82%D0%B5%D0%BB%D1%81%D1%82%D0%B2%D0%BE%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
       "aggregator": true,
       "window_hours": 48
     },
     {
       "name": "Google News — Доброволци",
-      "url": "https://news.google.com/rss/search?q=%D0%B4%D0%BE%D0%B1%D1%80%D0%BE%D0%B2%D0%BE%D0%BB%D1%86%D0%B8%20%D0%BF%D0%BE%D1%87%D0%B8%D1%81%D1%82%D0%B8%D1%85%D0%B0%20OR%20%D0%B4%D0%BE%D0%B1%D1%80%D0%BE%D0%B2%D0%BE%D0%BB%D1%87%D0%B5%D1%81%D0%BA%D0%B0%20%D0%B8%D0%BD%D0%B8%D1%86%D0%B8%D0%B0%D1%82%D0%B8%D0%B2%D0%B0%20OR%20%D0%B4%D0%BE%D0%B1%D1%80%D0%BE%D0%B2%D0%BE%D0%BB%D1%86%D0%B8%20%D0%B7%D0%B0%D1%81%D0%B0%D0%B4%D0%B8%D1%85%D0%B0%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "url": "https://news.google.com/rss/search?q=%D0%B4%D0%BE%D0%B1%D1%80%D0%BE%D0%B2%D0%BE%D0%BB%D1%86%D0%B8%20OR%20%D0%B4%D0%BE%D0%B1%D1%80%D0%BE%D0%B2%D0%BE%D0%BB%D1%87%D0%B5%D1%81%D0%BA%D0%B0%20OR%20%D0%B4%D0%BE%D0%B1%D1%80%D0%BE%D0%B2%D0%BE%D0%BB%D0%B5%D1%86%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
       "aggregator": true,
       "window_hours": 48
     },
     {
-      "name": "Google News — Ученици и олимпиади",
-      "url": "https://news.google.com/rss/search?q=%D0%B1%D1%8A%D0%BB%D0%B3%D0%B0%D1%80%D1%81%D0%BA%D0%B8%20%D1%83%D1%87%D0%B5%D0%BD%D0%B8%D1%86%D0%B8%20%D0%B7%D0%BB%D0%B0%D1%82%D0%B5%D0%BD%20%D0%BC%D0%B5%D0%B4%D0%B0%D0%BB%20OR%20%D0%BE%D0%BB%D0%B8%D0%BC%D0%BF%D0%B8%D0%B0%D0%B4%D0%B0%20%D0%BE%D1%82%D0%BB%D0%B8%D1%87%D0%B8%D0%B5%20%D1%83%D1%87%D0%B5%D0%BD%D0%B8%D1%86%D0%B8%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "name": "Google News — Ученици и медали",
+      "url": "https://news.google.com/rss/search?q=%D0%BC%D0%B5%D0%B4%D0%B0%D0%BB%20OR%20%D0%BE%D0%BB%D0%B8%D0%BC%D0%BF%D0%B8%D0%B0%D0%B4%D0%B0%20OR%20%D0%BE%D1%82%D0%BB%D0%B8%D1%87%D0%BD%D0%B8%D1%86%D0%B8%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
       "aggregator": true,
       "window_hours": 48
     },
     {
-      "name": "Google News — Наука и открития",
-      "url": "https://news.google.com/rss/search?q=%D0%B1%D1%8A%D0%BB%D0%B3%D0%B0%D1%80%D1%81%D0%BA%D0%BE%20%D0%BE%D1%82%D0%BA%D1%80%D0%B8%D1%82%D0%B8%D0%B5%20OR%20%D0%B1%D1%8A%D0%BB%D0%B3%D0%B0%D1%80%D1%81%D0%BA%D0%B8%20%D1%83%D1%87%D0%B5%D0%BD%D0%B8%20%D0%B8%D0%B7%D1%81%D0%BB%D0%B5%D0%B4%D0%B2%D0%B0%D0%BD%D0%B5%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "name": "Google News — Наука",
+      "url": "https://news.google.com/rss/search?q=%D1%83%D1%87%D0%B5%D0%BD%D0%B8%20OR%20%D0%B8%D0%B7%D1%81%D0%BB%D0%B5%D0%B4%D0%B2%D0%B0%D0%BD%D0%B5%20OR%20%D0%BE%D1%82%D0%BA%D1%80%D0%B8%D1%82%D0%B8%D0%B5%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
       "aggregator": true,
       "window_hours": 48
     },
     {
-      "name": "Google News — Нови паркове и природа",
-      "url": "https://news.google.com/rss/search?q=%D0%BD%D0%BE%D0%B2%20%D0%BF%D0%B0%D1%80%D0%BA%20%D0%BE%D1%82%D0%BA%D1%80%D0%B8%D1%85%D0%B0%20OR%20%D0%B7%D0%B0%D1%81%D0%B0%D0%B4%D0%B8%D1%85%D0%B0%20%D0%B4%D1%8A%D1%80%D0%B2%D0%B5%D1%82%D0%B0%20OR%20%D0%B2%D1%8A%D0%B7%D1%81%D1%82%D0%B0%D0%BD%D0%BE%D0%B2%D0%B8%D1%85%D0%B0%20%D0%BF%D1%80%D0%B8%D1%80%D0%BE%D0%B4%D0%B0%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "name": "Google News — Природа и паркове",
+      "url": "https://news.google.com/rss/search?q=%D0%B4%D1%8A%D1%80%D0%B2%D0%B5%D1%82%D0%B0%20OR%20%D0%BF%D0%B0%D1%80%D0%BA%20OR%20%D0%BF%D0%BE%D1%87%D0%B8%D1%81%D1%82%D0%B2%D0%B0%D0%BD%D0%B5%20OR%20%D0%BF%D1%80%D0%B8%D1%80%D0%BE%D0%B4%D0%B0%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
       "aggregator": true,
       "window_hours": 48
     },
     {
-      "name": "Google News — Реставрация и наследство",
-      "url": "https://news.google.com/rss/search?q=%D1%80%D0%B5%D1%81%D1%82%D0%B0%D0%B2%D1%80%D0%B8%D1%80%D0%B0%D1%85%D0%B0%20OR%20%D0%B2%D1%8A%D0%B7%D1%81%D1%82%D0%B0%D0%BD%D0%BE%D0%B2%D0%B8%D1%85%D0%B0%20%D1%86%D1%8A%D1%80%D0%BA%D0%B2%D0%B0%20OR%20%D0%B0%D1%80%D1%85%D0%B5%D0%BE%D0%BB%D0%BE%D0%B3%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%BE%20%D0%BE%D1%82%D0%BA%D1%80%D0%B8%D1%82%D0%B8%D0%B5%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "name": "Google News — Наследство",
+      "url": "https://news.google.com/rss/search?q=%D1%80%D0%B5%D1%81%D1%82%D0%B0%D0%B2%D1%80%D0%B0%D1%86%D0%B8%D1%8F%20OR%20%D0%B2%D1%8A%D0%B7%D1%81%D1%82%D0%B0%D0%BD%D0%BE%D0%B2%D0%B5%D0%BD%20OR%20%D0%B0%D1%80%D1%85%D0%B5%D0%BE%D0%BB%D0%BE%D0%B3%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
       "aggregator": true,
       "window_hours": 48
     },
     {
-      "name": "Google News — Здравеопазване успехи",
-      "url": "https://news.google.com/rss/search?q=%D0%BF%D1%8A%D1%80%D0%B2%D0%B0%20%D0%BF%D0%BE%20%D1%80%D0%BE%D0%B4%D0%B0%20%D1%81%D0%B8%20%D0%BE%D0%BF%D0%B5%D1%80%D0%B0%D1%86%D0%B8%D1%8F%20OR%20%D0%BD%D0%BE%D0%B2%D0%BE%20%D0%BE%D1%82%D0%B4%D0%B5%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5%20%D0%B1%D0%BE%D0%BB%D0%BD%D0%B8%D1%86%D0%B0%20OR%20%D1%81%D0%BF%D0%B0%D1%81%D0%B8%D1%85%D0%B0%20%D0%B6%D0%B8%D0%B2%D0%BE%D1%82%D0%B0%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "name": "Google News — Здравеопазване",
+      "url": "https://news.google.com/rss/search?q=%D0%B1%D0%BE%D0%BB%D0%BD%D0%B8%D1%86%D0%B0%20OR%20%D0%BB%D0%B5%D0%BA%D0%B0%D1%80%D0%B8%20OR%20%D1%82%D1%80%D0%B0%D0%BD%D1%81%D0%BF%D0%BB%D0%B0%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
       "aggregator": true,
       "window_hours": 48
     },
     {
       "name": "Google News — Безплатни инициативи",
-      "url": "https://news.google.com/rss/search?q=%D0%B1%D0%B5%D0%B7%D0%BF%D0%BB%D0%B0%D1%82%D0%BD%D0%B0%20%D0%B8%D0%BD%D0%B8%D1%86%D0%B8%D0%B0%D1%82%D0%B8%D0%B2%D0%B0%20OR%20%D0%B1%D0%B5%D0%B7%D0%BF%D0%BB%D0%B0%D1%82%D0%B5%D0%BD%20%D1%82%D1%80%D0%B0%D0%BD%D1%81%D0%BF%D0%BE%D1%80%D1%82%20OR%20%D0%B1%D0%B5%D0%B7%D0%BF%D0%BB%D0%B0%D1%82%D0%BD%D0%B8%20%D0%BF%D1%80%D0%B5%D0%B3%D0%BB%D0%B5%D0%B4%D0%B8%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "url": "https://news.google.com/rss/search?q=%D0%B1%D0%B5%D0%B7%D0%BF%D0%BB%D0%B0%D1%82%D0%BD%D0%BE%20OR%20%D0%B1%D0%B5%D0%B7%D0%BF%D0%BB%D0%B0%D1%82%D0%BD%D0%B0%20OR%20%D0%B1%D0%B5%D0%B7%D0%BF%D0%BB%D0%B0%D1%82%D0%B5%D0%BD%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
       "aggregator": true,
       "window_hours": 48
     },
     {
-      "name": "Google News — Награди и признание",
-      "url": "https://news.google.com/rss/search?q=%D0%BD%D0%B0%D0%B3%D1%80%D0%B0%D0%B4%D0%B0%20%D0%B7%D0%B0%20%D0%B1%D1%8A%D0%BB%D0%B3%D0%B0%D1%80%D0%B8%D0%BD%20OR%20%D0%BE%D1%82%D0%BB%D0%B8%D1%87%D0%B8%D1%85%D0%B0%20%D0%B1%D1%8A%D0%BB%D0%B3%D0%B0%D1%80%D0%BA%D0%B0%20OR%20%D0%BF%D1%80%D0%B8%D0%B7%D0%BD%D0%B0%20%D0%B7%D0%B0%20%D0%BF%D1%80%D0%B8%D0%BD%D0%BE%D1%81%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "name": "Google News — Награди",
+      "url": "https://news.google.com/rss/search?q=%D0%BD%D0%B0%D0%B3%D1%80%D0%B0%D0%B4%D0%B0%20OR%20%D0%BE%D1%82%D0%BB%D0%B8%D1%87%D0%B8%D0%B5%20OR%20%D0%BE%D1%82%D0%BB%D0%B8%D1%87%D0%B8%D1%85%D0%B0%20OR%20%D0%BF%D1%80%D0%B8%D0%B7%D0%BD%D0%B0%D0%BD%D0%B8%D0%B5%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
       "aggregator": true,
       "window_hours": 48
     },
     {
-      "name": "Google News — Местни герои",
-      "url": "https://news.google.com/rss/search?q=%D1%81%D0%BF%D0%B0%D1%81%D0%B8%20%D0%B4%D0%B5%D1%82%D0%B5%20OR%20%D1%81%D0%BF%D0%B0%D1%81%D0%B8%20%D1%87%D0%BE%D0%B2%D0%B5%D0%BA%20OR%20%D0%BF%D0%BE%D0%BC%D0%BE%D0%B3%D0%BD%D0%B0%20%D0%BD%D0%B0%20%D0%BD%D0%B5%D0%BF%D0%BE%D0%B7%D0%BD%D0%B0%D1%82%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "name": "Google News — Стипендии",
+      "url": "https://news.google.com/rss/search?q=%D1%81%D1%82%D0%B8%D0%BF%D0%B5%D0%BD%D0%B4%D0%B8%D1%8F%20OR%20%D1%81%D1%82%D0%B8%D0%BF%D0%B5%D0%BD%D0%B4%D0%B8%D0%B8%20OR%20%D1%84%D0%BE%D0%BD%D0%B4%D0%B0%D1%86%D0%B8%D1%8F%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
       "aggregator": true,
       "window_hours": 48
     },
     {
-      "name": "Google News — Култура и фестивали",
-      "url": "https://news.google.com/rss/search?q=%D1%84%D0%B5%D1%81%D1%82%D0%B8%D0%B2%D0%B0%D0%BB%20%D0%BE%D1%82%D0%BA%D1%80%D0%B8%D1%85%D0%B0%20OR%20%D0%BD%D0%BE%D0%B2%D0%B0%20%D0%B3%D0%B0%D0%BB%D0%B5%D1%80%D0%B8%D1%8F%20OR%20%D0%B8%D0%B7%D0%BB%D0%BE%D0%B6%D0%B1%D0%B0%20%D0%BE%D1%82%D0%BA%D1%80%D0%B8%D0%B2%D0%B0%D0%BD%D0%B5%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "name": "Google News — Култура",
+      "url": "https://news.google.com/rss/search?q=%D1%84%D0%B5%D1%81%D1%82%D0%B8%D0%B2%D0%B0%D0%BB%20OR%20%D0%B8%D0%B7%D0%BB%D0%BE%D0%B6%D0%B1%D0%B0%20OR%20%D0%B3%D0%B0%D0%BB%D0%B5%D1%80%D0%B8%D1%8F%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
       "aggregator": true,
       "window_hours": 48
     },
     {
-      "name": "Google News — Спорт успехи",
-      "url": "https://news.google.com/rss/search?q=%D0%B1%D1%8A%D0%BB%D0%B3%D0%B0%D1%80%D1%81%D0%BA%D0%B8%20%D1%81%D0%BF%D0%BE%D1%80%D1%82%D0%B8%D1%81%D1%82%20%D1%82%D0%B8%D1%82%D0%BB%D0%B0%20OR%20%D0%B5%D0%B2%D1%80%D0%BE%D0%BF%D0%B5%D0%B9%D1%81%D0%BA%D0%B0%20%D1%82%D0%B8%D1%82%D0%BB%D0%B0%20%D0%B1%D1%8A%D0%BB%D0%B3%D0%B0%D1%80%D0%B8%D1%8F%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
+      "name": "Google News — Спорт",
+      "url": "https://news.google.com/rss/search?q=%D1%82%D0%B8%D1%82%D0%BB%D0%B0%20OR%20%D1%88%D0%B0%D0%BC%D0%BF%D0%B8%D0%BE%D0%BD%20OR%20%D0%B7%D0%BB%D0%B0%D1%82%D0%B5%D0%BD%20%D0%BC%D0%B5%D0%B4%D0%B0%D0%BB%20when%3A2d&hl=bg&gl=BG&ceid=BG:bg",
       "aggregator": true,
       "window_hours": 48
     }
