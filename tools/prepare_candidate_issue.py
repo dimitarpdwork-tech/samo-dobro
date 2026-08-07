@@ -323,6 +323,12 @@ def main() -> int:
             pipeline.hold_animal_candidate(seen, cid)
             held += 1
             continue
+        # A fixed-size shortlist means a strong story can be passed over simply
+        # because that day was crowded. Park those too instead of burning them.
+        if pipeline.should_hold_candidate(cfg, cand):
+            pipeline.hold_strong_candidate(cfg, seen, cid)
+            held += 1
+            continue
         seen["ids"].append(cid)
         seen_ids.add(cid)
         marked += 1
