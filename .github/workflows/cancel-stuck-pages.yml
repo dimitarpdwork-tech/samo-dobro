@@ -1,25 +1,71 @@
 name: Cancel stuck Pages deployment
 
+# A Pages deploy that hangs blocks every later one: scheduled-publish.yml uses
+# the `pages` concurrency group, so once a deployment is stuck in progress the
+# site stops rebuilding and scheduled articles never go live. The Facebook
+# queue then correctly refuses to post links to pages that 404, and the whole
+# pipeline goes quiet without anything reporting an error.
+#
+# The previous version of this file hardcoded the SHA of one specific stuck
+# deployment from a past incident, so re-running it on a NEW incident silently
+# cancelled nothing. This one looks up whatever is actually stuck.
+
 on:
   workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit SHA to cancel (leave empty to cancel the newest in_progress/queued deployment)"
+        type: string
+        default: ""
 
 permissions:
   pages: write
   contents: read
+  deployments: read
 
 jobs:
   cancel:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Cancel stuck deployment
+      - name: Find and cancel the stuck deployment
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          INPUT_SHA: ${{ inputs.sha }}
+        shell: bash
         run: |
-          curl -L \
-            -X POST \
+          set -euo pipefail
+
+          SHA="$INPUT_SHA"
+
+          if [ -z "$SHA" ]; then
+            echo "No SHA given — looking for a deployment that is stuck."
+            # Walk the most recent github-pages deployments newest-first and
+            # take the first one whose latest status is not a finished state.
+            for CANDIDATE in $(gh api "repos/$REPO/deployments?environment=github-pages&per_page=10" \
+                                 --jq '.[].id'); do
+              STATE=$(gh api "repos/$REPO/deployments/$CANDIDATE/statuses?per_page=1" \
+                        --jq '.[0].state // "pending"')
+              if [ "$STATE" = "in_progress" ] || [ "$STATE" = "queued" ] || [ "$STATE" = "pending" ]; then
+                SHA=$(gh api "repos/$REPO/deployments/$CANDIDATE" --jq '.sha')
+                echo "Stuck deployment $CANDIDATE ($STATE) at ${SHA:0:8}"
+                break
+              fi
+            done
+          fi
+
+          if [ -z "$SHA" ]; then
+            echo "Nothing stuck — every recent Pages deployment reached a final state."
+            echo "If the site is still stale, the problem is the build, not the deploy:"
+            echo "  gh run list --workflow=scheduled-publish.yml --limit 8"
+            exit 0
+          fi
+
+          echo "Cancelling Pages deployment for ${SHA:0:8}…"
+          gh api --method POST \
             -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${{ github.repository }}/pages/deployments/c3b27e8d3f8cf3ce93d2da950f6e8a3d42b4898c/cancel" \
-            --fail-with-body
+            "repos/$REPO/pages/deployments/$SHA/cancel"
+
+          echo "Cancelled. Re-run the build with:"
+          echo "  gh workflow run scheduled-publish.yml"
