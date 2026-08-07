@@ -1,0 +1,86 @@
+name: Editorial calendar reminder
+
+# Predictable good news needs preparation, not discovery. This fires a
+# reminder issue a set number of days before each dated event so the story is
+# researched before it happens rather than chased after a competitor runs it.
+#
+# It costs nothing: no API calls, no model, pure JSON lookup. On most days it
+# exits without opening anything.
+
+on:
+  schedule:
+    # 06:10 UTC — deliberately an hour before the editorial shortlist, so on a
+    # day when both fire, the calendar issue is already sitting above it.
+    # Same two-line DST trick as candidate-shortlist.yml: GitHub cron is UTC
+    # and ignores daylight saving, so one line would drift twice a year.
+    #   Apr-Oct  UTC+3  ->  04:10 UTC = 07:10 Sofia
+    #   Nov-Mar  UTC+2  ->  05:10 UTC = 07:10 Sofia
+    - cron: "10 4 * 4-10 *"
+    - cron: "10 5 * 1-3,11-12 *"
+  workflow_dispatch:
+    inputs:
+      on_date:
+        description: "Pretend today is this date (YYYY-MM-DD) — for testing"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: dobrodelo-editorial-calendar
+  cancel-in-progress: false
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Find events coming up
+        id: calendar
+        shell: bash
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.on_date }}" ]; then
+            ARGS="--on ${{ inputs.on_date }}"
+          fi
+          if python tools/calendar_reminder.py $ARGS --out calendar_issue.md; then
+            echo "due=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "due=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open calendar issue
+        if: steps.calendar.outputs.due == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TITLE="🗓️ Добро Дело — предстоящо от календара — $(date -u +'%Y-%m-%d')"
+
+          # Idempotency: a re-run on the same day must not open a second issue.
+          # Searching --state all also covers the case where the editor already
+          # closed today's issue and the workflow was retried.
+          EXISTING=$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --state all \
+            --search "\"$TITLE\" in:title" \
+            --json number --jq 'length')
+
+          if [ "$EXISTING" != "0" ]; then
+            echo "Issue за днес вече съществува — пропускам."
+            exit 0
+          fi
+
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "$TITLE" \
+            --label editorial-calendar \
+            --body-file calendar_issue.md
