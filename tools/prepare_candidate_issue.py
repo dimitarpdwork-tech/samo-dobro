@@ -173,20 +173,28 @@ def main() -> int:
     # be cut off before producing any JSON at all. Output tokens are billed
     # only for what is actually generated, so a generous ceiling costs nothing
     # on a normal run.
-    # Two independent guards, because losing a whole day's shortlist to a
-    # truncated response is expensive and the failure is silent:
-    #   1. prefill "[" — the model cannot preamble its way past the ceiling;
-    #   2. a ceiling with real slack. Output is billed on tokens generated,
-    #      not on the ceiling, so headroom is free on every normal run and
-    #      only matters on the run that would otherwise have been lost.
-    token_budget = max(8000, 1500 + shortlist_size * 400)
-    raw = pipeline.call_claude(
-        cfg,
-        prompt,
-        max_tokens_override=token_budget,
-        hard_fail=True,
-        prefill="[",
-    )
+    # The model reasons before it answers, and that reasoning is billed
+    # against max_tokens. A ceiling sized for the JSON alone (20 objects is
+    # well under 6k) was consumed entirely by deliberation over 200
+    # candidates, and the run returned no text at all — which downstream is
+    # indistinguishable from "nothing was good enough today". Size the
+    # ceiling for thinking plus answer, not answer alone. Output is billed on
+    # tokens actually generated, so headroom is free on a normal run.
+    token_budget = max(24000, 4000 + shortlist_size * 400)
+    raw = pipeline.call_claude(cfg, prompt, max_tokens_override=token_budget,
+                               hard_fail=True)
+    picks = pipeline.parse_selection(raw)
+
+    # One retry, and only for the one failure this cannot recover from:
+    # truncated before any parsable output. An empty shortlist from a
+    # COMPLETE response is a real editorial verdict and must not be retried —
+    # that would just pay twice for the same "no".
+    if not picks and pipeline.LAST_STOP_REASON == "max_tokens":
+        print(f"  [shortlist] truncated before any JSON — retrying once at "
+              f"{token_budget * 2} tokens.")
+        raw = pipeline.call_claude(cfg, prompt,
+                                   max_tokens_override=token_budget * 2,
+                                   hard_fail=True)
     picks = pipeline.parse_selection(raw)
 
     selected = []
