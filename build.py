@@ -284,6 +284,8 @@ border-radius:999px;padding:3px 10px;align-self:flex-start}
 .card .thumb{display:block;line-height:0}
 .thumb{position:relative;overflow:hidden;background:var(--line)}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.submit-cta{margin:18px 0;padding:14px 16px;border:1px dashed var(--line,#d8d8d8);border-radius:10px;font-size:.95rem;line-height:1.5}
+.submit-cta a{font-weight:600}
 .photo-credit{position:absolute;right:6px;bottom:5px;font-family:var(--fl);font-size:.66rem;
 color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:999px;text-decoration:none}
 .ai-credit{position:absolute;right:6px;bottom:5px;font-family:var(--fl);font-size:.66rem;
@@ -1848,6 +1850,21 @@ def build_articles(site, linked_tags: set, city_slugs: set | None = None) -> Non
             src = (f'<aside class="srcbox"><strong>{esc(ui["source"])}:</strong> '
                    f'<a href="{esc(a["source_url"])}" target="_blank" rel="noopener">{esc(a["source_name"])}</a>'
                    f'<p class="ainote">{esc(added_context_label)}: {esc(byline_name)}</p></aside>')
+        # Readers who just finished a story about a local rescue or a school
+        # are the single best discovery channel this site has — they know
+        # about things before any feed does. The submission page existed only
+        # as a nav chip, where nobody in a reading mindset ever looks; putting
+        # the ask directly under the story is the whole point of having it.
+        submit_cta = ""
+        if cfg.get("submit_path"):
+            submit_cta = (
+                f'<aside class="submit-cta">'
+                f'<strong>{esc(ui.get("submit_cta_title", "Знаете добра новина?"))}</strong> '
+                f'{esc(ui.get("submit_cta_text", "Разкажете ни за нея."))} '
+                f'<a href="{site.u("/" + cfg["submit_path"] + "/")}">'
+                f'{esc(ui.get("submit_cta_link", "Изпратете я тук"))}</a>'
+                f'</aside>'
+            )
         quick_facts = [f for f in (a.get("quick_facts") or []) if f][:5]
         quick_facts_html = ""
         if quick_facts:
@@ -1875,6 +1892,7 @@ def build_articles(site, linked_tags: set, city_slugs: set | None = None) -> Non
 {share_html}
 {f'<div class="tags">{tags}</div>' if tags else ''}
 {src}
+{submit_cta}
 {cat_unlock_block(cat_unlock) if cat_unlock else ''}
 </article>
 {rel_html}
