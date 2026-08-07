@@ -43,6 +43,7 @@ except ImportError:
 ROOT = Path(__file__).resolve().parent
 CONTENT_DIR = ROOT / "content" / "articles"
 SEEN_FILE = ROOT / "content" / "seen.json"
+_SEEN_CAP = 4000  # overridden from config by load_seen()
 PR_DESCRIPTION_FILE = ROOT / "pr_description.md"
 
 # Every article successfully created/changed in this run, for the human-review
@@ -141,6 +142,18 @@ def load_config() -> dict:
         return json.load(f)
 
 
+def _set_seen_cap() -> None:
+    """Size the dedupe memory from config so it can't silently under-run when
+    the candidate pool is widened."""
+    global _SEEN_CAP
+    try:
+        cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+        cr = cfg.get("candidate_ranking") or {}
+        _SEEN_CAP = int(cr.get("seen_ids_max", max(4000, int(cr.get("max_candidates", 40)) * 75)))
+    except Exception:
+        _SEEN_CAP = 4000
+
+
 def load_seen() -> dict:
     if SEEN_FILE.exists():
         with open(SEEN_FILE, encoding="utf-8-sig") as f:
@@ -149,6 +162,7 @@ def load_seen() -> dict:
         seen.setdefault("dismissed", [])
         seen.setdefault("animal_hold", {})
         seen.setdefault("strong_hold", {})
+        _set_seen_cap()
         return seen
     return {"ids": [], "dismissed": [], "animal_hold": {}}
 
@@ -243,7 +257,14 @@ def expire_animal_holds(cfg: dict, seen: dict) -> int:
 
 
 def save_seen(seen: dict) -> None:
-    seen["ids"] = seen["ids"][-4000:]  # keep the file small
+    # Cap the dedupe memory, but make the cap follow max_candidates: this is
+    # how many stories back the site can remember having already considered.
+    # At 4000 with ~50 candidates a day that was ~80 days of history; at 200 a
+    # day the same number would cycle in three weeks and start re-offering
+    # stories it had already rejected. Rule of thumb kept here deliberately:
+    # roughly 75 days of throughput.
+    cap = int(_SEEN_CAP or 4000)
+    seen["ids"] = seen["ids"][-cap:]
     # 'dismissed' is deliberately NOT capped. It only grows through explicit
     # human /dismiss commands (a handful a day at most), and its whole purpose
     # is to be permanent — capping it would resurrect stories the editor
