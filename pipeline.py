@@ -500,6 +500,7 @@ def fetch_feed(feed: dict, window_hours: int) -> list[dict]:
                 "summary": clean_text(getattr(e, "summary", "")),
                 "link": article_link,
                 "source": (src_name or feed["name"]) if feed.get("aggregator") else feed["name"],
+                "_feed": feed["name"],
                 "expected_source_host": entry_source_host or normalize_host(feed["url"]),
                 "allow_external_links": bool(
                     feed.get("allow_external_links", False) or feed.get("aggregator", False)
@@ -780,9 +781,19 @@ def rank_candidates(cfg: dict, candidates: list[dict]) -> list[dict]:
     before_dedupe = len(scored)
     scored = dedupe_candidates(scored)
 
-    per_source, muni_total, capped = {}, 0, []
+    # Cap per FEED as well as per source. These stopped being the same thing
+    # when aggregator unwrapping made `source` the publisher: one Google News
+    # query returns 30 items from 30 different outlets, so cap_per_source
+    # never bites and a single broad query can crowd out every curated feed.
+    # BTA is held to 4 while an aggregator walks in with 30 — which is how a
+    # shortlist run ended up seeing almost nothing but road-accident rescues.
+    cap_feed = int(rank_cfg.get("cap_per_feed", 0))
+    per_source, per_feed, muni_total, capped = {}, {}, 0, []
     for cand in scored:
         name = cand.get("source", "")
+        feed_name = cand.get("_feed", name)
+        if cap_feed and per_feed.get(feed_name, 0) >= cap_feed:
+            continue
         is_muni = name.startswith("Община")
         cap = cap_muni if is_muni else cap_source
         if per_source.get(name, 0) >= cap:
@@ -792,6 +803,7 @@ def rank_candidates(cfg: dict, candidates: list[dict]) -> list[dict]:
         per_source[name] = per_source.get(name, 0) + 1
         if is_muni:
             muni_total += 1
+        per_feed[feed_name] = per_feed.get(feed_name, 0) + 1
         capped.append(cand)
         if len(capped) >= max_total:
             break
@@ -808,8 +820,19 @@ def rank_candidates(cfg: dict, candidates: list[dict]) -> list[dict]:
                 break
             if cand.get("id") in chosen:
                 continue
+            fname = cand.get("_feed", cand.get("source", ""))
+            if cap_feed and per_feed.get(fname, 0) >= cap_feed * 2:
+                continue  # relaxed, not removed — backfill must not re-flood
+            per_feed[fname] = per_feed.get(fname, 0) + 1
             capped.append(cand)
             chosen.add(cand.get("id"))
+
+    by_feed = {}
+    for c in capped:
+        by_feed[c.get("_feed", "?")] = by_feed.get(c.get("_feed", "?"), 0) + 1
+    top_feeds = ", ".join(f"{n}×{k[:28]}" for k, n in
+                          sorted(by_feed.items(), key=lambda kv: -kv[1])[:6])
+    print(f"  [rank] feeds in shortlist pool: {len(by_feed)} — {top_feeds}")
 
     by_source = {}
     for c in capped:
