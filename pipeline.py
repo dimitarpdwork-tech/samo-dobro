@@ -1040,6 +1040,54 @@ def load_recent_headlines(days: int = 10, limit: int = 60) -> list[str]:
     return [h for _, h in items[:limit]]
 
 
+def _fetch_html_as_browser(url: str, timeout: int) -> tuple[str | None, str]:
+    """Last-resort HTML fetch for extraction. Returns (html, note).
+
+    http_get already does bot-UA-then-browser-profile, which is enough for most
+    publishers. A few WAFs additionally check that the request looks like a real
+    navigation: a Referer, the Sec-Fetch-* set, and a connection that carries
+    cookies from a first hit on the site root. That is what the second attempt
+    here adds. Both attempts are best-effort — the caller falls back to the RSS
+    snippet, never to a broken article.
+
+    The note is for the log: on failure it carries the HTTP status code, because
+    "HTTPError" alone cannot distinguish a bot block (403) from a dead link
+    (404) from a site that is simply down (5xx), and those need different fixes.
+    """
+    try:
+        return http_get(url, timeout=timeout).text, "browser profile"
+    except Exception as exc:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        first_note = f"{type(exc).__name__}{f' {status}' if status else ''}"
+
+    try:
+        parts = urlparse(url)
+        root = f"{parts.scheme}://{parts.netloc}/"
+        session = requests.Session()
+        headers = {
+            **BROWSER_HEADERS,
+            "Referer": root,
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-User": "?1",
+        }
+        # Hit the site root first so the session picks up any cookie the WAF
+        # sets before it will serve an article page. Failure here is fine.
+        try:
+            session.get(root, timeout=timeout, headers=dict(BROWSER_HEADERS))
+        except Exception:
+            pass
+        resp = session.get(url, timeout=timeout, headers=headers)
+        resp.raise_for_status()
+        return resp.text, "navigation profile"
+    except Exception as exc:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        second_note = f"{type(exc).__name__}{f' {status}' if status else ''}"
+
+    return None, f"{first_note}, then {second_note}"
+
+
 def fetch_full_article(url: str, timeout: int = 8) -> str | None:
     """Fetch a story's source page and extract just the article text.
 
@@ -1071,17 +1119,15 @@ def fetch_full_article(url: str, timeout: int = 8) -> str | None:
             # other headers a browser sends. A number of Bulgarian publishers
             # (divident.eu among them) refuse that outright, so the story is
             # written from the RSS snippet even though the page is perfectly
-            # readable. http_get already solves exactly this for feeds: bot UA
-            # first, then a full BROWSER_HEADERS retry. Reuse it here rather
-            # than giving up — see the comment on BROWSER_HEADERS for why the
+            # readable. Escalate through the browser and navigation profiles
+            # before giving up — see the comment on BROWSER_HEADERS for why the
             # whole profile matters and swapping the UA alone is not enough.
-            try:
-                downloaded = http_get(url, timeout=timeout + 7).text
-                print(f"    [extract] {normalize_host(url)} needed the browser profile")
-            except Exception as exc:
-                print(f"    [extract] {normalize_host(url)} unreachable "
-                      f"({type(exc).__name__}) — using snippet")
+            downloaded, note = _fetch_html_as_browser(url, timeout + 7)
+            if not downloaded:
+                print(f"    [extract] {normalize_host(url)} refused: {note} "
+                      f"— using snippet")
                 return None
+            print(f"    [extract] {normalize_host(url)} needed the {note}")
 
         if not downloaded:
             return None
