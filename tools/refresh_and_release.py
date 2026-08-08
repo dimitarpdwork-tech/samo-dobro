@@ -182,6 +182,14 @@ def main() -> int:
 
         print(f"Releasing ({args.release_mode}):")
         for (path, art), slot in zip(targets, slots):
+            # An article that is ALREADY public must never be re-dated. Its URL
+            # is indexed, it may already have been posted to Facebook, and
+            # moving `published` forward would present old news as new. This
+            # matters because --slugs can legitimately target live articles
+            # (to re-draft a thin one), and release must be a no-op for those.
+            if pipeline.is_live(art, now):
+                print(f"  {art.get('slug', path.stem)}  ->  already live, date untouched")
+                continue
             stamp = slot.strftime(STAMP)
             # `published` tracks publish_at by design — an article that becomes
             # visible at 09:40 must carry 09:40, not the moment it was drafted.
