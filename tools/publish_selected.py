@@ -213,6 +213,18 @@ def main() -> int:
             )
             continue
 
+        # Backstop for the same rule enforced at shortlist time. A queue built
+        # before that check existed, or a publisher that started blocking us
+        # between shortlisting and publishing, would otherwise still produce a
+        # snippet-thin article here.
+        if pipeline.requires_full_source(cand) and not full_text:
+            reason = "aggregator story but the publisher's page could not be read"
+            print(f"  [skip · thin source] #{human_number} {cand.get('title','')[:60]}")
+            failed.append(
+                {"number": human_number, "title": cand.get("title", ""), "reason": reason}
+            )
+            continue
+
         prompt = pipeline.build_writing_prompt(
             cfg,
             cand,
