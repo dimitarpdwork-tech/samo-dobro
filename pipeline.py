@@ -553,6 +553,25 @@ SENSITIVE_TOPIC_PATTERNS = (
 )
 
 
+def requires_full_source(candidate: dict) -> bool:
+    """True if this story must not be written from the RSS snippet alone.
+
+    A story from a publisher's own feed usually carries a usable summary, so a
+    snippet-written article is thin but honest. A story that arrived through an
+    aggregator does not: all we hold is the aggregator's one-or-two-sentence
+    teaser, and writing from that produced articles roughly half the length of
+    the rest of the archive (692 vs 1380 median characters) — with the model
+    padding the gap with lines like "details are not specified in the available
+    information".
+
+    So: if it came via an aggregator and the publisher's page cannot be read,
+    the story is dropped rather than published thin. The cost is fewer
+    candidates on days when publishers block us; the alternative is publishing
+    articles that don't meet the site's standard.
+    """
+    return bool(candidate.get("from_aggregator"))
+
+
 def is_sensitive_candidate(candidate: dict) -> bool:
     haystack = " ".join(
         [
@@ -650,6 +669,12 @@ def fetch_feed(feed: dict, window_hours: int) -> list[dict]:
                 "source": (src_name or feed["name"]) if feed.get("aggregator") else feed["name"],
                 "_feed": feed["name"],
                 "expected_source_host": entry_source_host or normalize_host(feed["url"]),
+                # Marks a story that reached us through an aggregator rather
+                # than the publisher's own feed. Such a story carries only the
+                # aggregator's short summary, so writing it without the
+                # publisher's page produces a half-length article — see
+                # requires_full_source().
+                "from_aggregator": bool(feed.get("aggregator")),
                 # NOT auto-set by feed["aggregator"] any more. Aggregator links
                 # are resolved to the publisher above, so by this point the link
                 # host and expected_source_host should already agree — and if
