@@ -19,6 +19,7 @@ Designed to run on a schedule inside GitHub Actions (see .github/workflows).
 """
 
 import argparse
+import base64
 import hashlib
 import html
 import json
@@ -367,8 +368,140 @@ def hosts_match(expected: str, actual: str) -> bool:
     )
 
 
+AGGREGATOR_HOSTS = ("news.google.com",)
+
+
+def is_aggregator_url(url: str) -> bool:
+    """True if a URL points at an aggregator's redirect rather than a publisher."""
+    host = normalize_host(url)
+    return any(hosts_match(h, host) for h in AGGREGATOR_HOSTS)
+
+
+def _decode_legacy_google_token(url: str) -> str | None:
+    """Google News used to embed the publisher URL directly in /rss/articles/<token>:
+    base64 of a tiny protobuf whose first string field IS the destination URL.
+    Those tokens still turn up, and decoding them is free and offline, so try
+    this before touching the network.
+
+    The CURRENT format carries an opaque server-side handle instead —
+    b'\\x08\\x13"\\x94\\x01AU_yqL...' — which cannot be decoded locally at all.
+    Returns None for those; the caller falls back to resolve-over-HTTP, and
+    then to dropping the candidate.
+    """
+    m = re.search(r"/rss/articles/([A-Za-z0-9_\-]+)", url or "")
+    if not m:
+        return None
+    token = m.group(1)
+    try:
+        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4))
+    except Exception:
+        return None
+    # Strip the protobuf field header (0x08 0x13 0x22 <varint length>).
+    body = raw[2:]
+    if body[:1] != b"\x22":
+        return None
+    idx = 1
+    length = 0
+    shift = 0
+    while idx < len(body):
+        byte = body[idx]
+        idx += 1
+        length |= (byte & 0x7F) << shift
+        if not byte & 0x80:
+            break
+        shift += 7
+    payload = body[idx: idx + length]
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    if text.startswith("http://") or text.startswith("https://"):
+        return text
+    return None
+
+
+def _resolve_google_over_http(url: str, timeout: int = 10) -> str | None:
+    """Ask Google to resolve one of its opaque article handles.
+
+    This uses the undocumented batchexecute endpoint that news.google.com's own
+    front-end calls. It is unversioned and Google has broken it before, so
+    EVERY failure path here returns None and the caller drops the candidate.
+    A resolution outage must cost us stories, never a wrong source link.
+    """
+    try:
+        resp = requests.get(url, timeout=timeout, headers=dict(BROWSER_HEADERS))
+        resp.raise_for_status()
+        html = resp.text
+
+        def attr(name: str) -> str:
+            m = re.search(rf'data-n-a-{name}="([^"]+)"', html)
+            return m.group(1) if m else ""
+
+        art_id, signature, timestamp = attr("id"), attr("sg"), attr("ts")
+        if not (art_id and signature and timestamp):
+            return None
+
+        inner = json.dumps([
+            "garturlreq",
+            [["X", "X", ["X", "X"], None, None, 1, 1, "US:en", None, 1,
+              None, None, None, None, None, 0, 1],
+             "X", "X", 1, [1, 1, 1], 1, 1, None, 0, 0, None, 0],
+            art_id, int(timestamp), signature,
+        ])
+        payload = {"f.req": json.dumps([[["Fbv4je", inner, None, "generic"]]])}
+
+        resp = requests.post(
+            "https://news.google.com/_/DotsSplashUi/data/batchexecute",
+            data=payload,
+            timeout=timeout,
+            headers={
+                **BROWSER_HEADERS,
+                "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+            },
+        )
+        resp.raise_for_status()
+
+        for line in resp.text.splitlines():
+            line = line.strip()
+            if not line.startswith("[["):
+                continue
+            for entry in json.loads(line):
+                if len(entry) > 2 and entry[0] == "wrb.fr" and entry[2]:
+                    resolved = json.loads(entry[2])[1]
+                    if isinstance(resolved, str) and resolved.startswith("http"):
+                        return resolved
+        return None
+    except Exception:
+        return None
+
+
+def resolve_aggregator_url(url: str, timeout: int = 10) -> str | None:
+    """Turn an aggregator redirect into the publisher's real article URL.
+
+    Returns None when it cannot be resolved — callers MUST drop the candidate
+    rather than fall back to the aggregator URL. Publishing a news.google.com
+    link as an article's cited source breaks the site's core promise that every
+    article links the source it was written from, and it makes source_host
+    disagree with source_name in the article JSON.
+    """
+    if not is_aggregator_url(url):
+        return url
+    resolved = _decode_legacy_google_token(url)
+    if resolved and not is_aggregator_url(resolved):
+        return resolved
+    resolved = _resolve_google_over_http(url, timeout=timeout)
+    if resolved and not is_aggregator_url(resolved):
+        return resolved
+    return None
+
+
 def validate_candidate_source(candidate: dict) -> tuple[bool, str]:
     """Check whether article URL matches the configured source domain."""
+    # An aggregator-hosted link is never acceptable, regardless of any
+    # allow_external_links exemption the feed carries.
+    if is_aggregator_url(candidate.get("link", "")):
+        return False, "unresolved aggregator link"
+
     if candidate.get("allow_external_links"):
         return True, ""
 
@@ -494,6 +627,20 @@ def fetch_feed(feed: dict, window_hours: int) -> list[dict]:
             if src_name and title.endswith(f" - {src_name}"):
                 title = title[: -len(f" - {src_name}")].strip()
 
+            # Resolve the redirect to the publisher's own URL HERE, before the
+            # candidate is scored or shown to the editor. An aggregator link is
+            # useless downstream: trafilatura cannot extract it (so the story is
+            # written from a two-sentence RSS snippet), and if it survives to
+            # publication the article cites news.google.com instead of the
+            # publisher. Unresolvable means dropped — never fall through.
+            resolved = resolve_aggregator_url(article_link)
+            if not resolved:
+                print(f"    [aggregator] unresolved, dropping: {title[:60]}")
+                continue
+            article_link = resolved
+            if not entry_source_host:
+                entry_source_host = normalize_host(article_link)
+
         out.append(
             {
                 "id": entry_id(article_link, title),
@@ -503,9 +650,11 @@ def fetch_feed(feed: dict, window_hours: int) -> list[dict]:
                 "source": (src_name or feed["name"]) if feed.get("aggregator") else feed["name"],
                 "_feed": feed["name"],
                 "expected_source_host": entry_source_host or normalize_host(feed["url"]),
-                "allow_external_links": bool(
-                    feed.get("allow_external_links", False) or feed.get("aggregator", False)
-                ),
+                # NOT auto-set by feed["aggregator"] any more. Aggregator links
+                # are resolved to the publisher above, so by this point the link
+                # host and expected_source_host should already agree — and if
+                # they don't, that mismatch is exactly what we want flagged.
+                "allow_external_links": bool(feed.get("allow_external_links", False)),
                 "source_published": (
                     published.strftime("%Y-%m-%dT%H:%M:%SZ")
                     if published
