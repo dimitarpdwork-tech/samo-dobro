@@ -157,12 +157,18 @@ def main() -> int:
     # SELECTED items so the spacing reflects the editor's choice; items that
     # later fail safety or writing checks simply leave a gap in the schedule,
     # which is harmless.
+    # Slots are CONSUMED by articles that actually get written, not indexed by
+    # position in the selection. Indexing by selection position means a failed
+    # first candidate burns the first_immediate "now" slot and pushes the whole
+    # batch back by interval_minutes, so nothing appears on the site for an hour
+    # even though articles were written successfully.
     slots = pipeline.compute_publish_slots(cfg, len(selected_items))
+    slot_queue = list(slots)
     if len(slots) > 1:
         print(f"[editorial] staggering {len(slots)} article(s): "
               + ", ".join(d.strftime("%H:%M") for d in slots) + " UTC")
 
-    for slot_index, (human_number, item) in enumerate(zip(selected_numbers, selected_items)):
+    for human_number, item in zip(selected_numbers, selected_items):
         cand = item["candidate"]
 
         # An item might have been published through another route since the issue was created.
@@ -231,7 +237,8 @@ def main() -> int:
             continue
 
         url = pipeline.save_one_written(
-            cfg, written, cand, seen, publish_at=slots[slot_index]
+            cfg, written, cand, seen,
+            publish_at=slot_queue.pop(0) if slot_queue else None,
         )
         if not url:
             reason = "article save validation failed"
