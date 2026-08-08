@@ -193,7 +193,12 @@ jobs:
               print()
               print("Неуспели избрани кандидати:")
               for item in failed:
-                  print(f"- #{item.get('number')}: {item.get('reason')}")
+                  # Include the title. A bare "#1" gets autolinked by GitHub
+                  # into a reference to PR/issue 1 and rendered with THAT
+                  # item's title, which made this report look as though the
+                  # pipeline had ingested the repo's own pull requests.
+                  title = (item.get("title") or "").strip() or "(no title)"
+                  print(f"- **{title}** (#{item.get('number')}): {item.get('reason')}")
           PY
 
           gh issue comment "$ISSUE_NUMBER" \
