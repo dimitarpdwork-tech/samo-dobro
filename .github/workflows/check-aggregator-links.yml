@@ -1,0 +1,110 @@
+name: Check aggregator source links
+
+# Run this from the Actions tab. It looks at every published article whose
+# cited source is an aggregator redirect (news.google.com) instead of the real
+# publisher, and reports what can be repaired.
+#
+#   report              — look only, change nothing. START HERE.
+#   fix                 — rewrite source_url/source_host where the link resolves,
+#                         and open a review PR with the changes.
+#   fix-and-unpublish   — same, but also delete articles whose link cannot be
+#                         resolved at all.
+#
+# Results appear in the run's summary page — no need to read the raw log.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "What to do"
+        required: true
+        default: report
+        type: choice
+        options:
+          - report
+          - fix
+          - fix-and-unpublish
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run the check
+        id: check
+        run: |
+          set -o pipefail
+
+          case "${{ inputs.mode }}" in
+            report)            ARGS="" ;;
+            fix)               ARGS="--fix" ;;
+            fix-and-unpublish) ARGS="--fix --unpublish-unresolved" ;;
+          esac
+
+          python tools/resolve_google_links.py $ARGS 2>&1 | tee /tmp/aggregator-report.txt
+
+      - name: Show the result on the summary page
+        if: always()
+        run: |
+          {
+            echo "## Aggregator source-link check"
+            echo
+            echo "Mode: \`${{ inputs.mode }}\`"
+            echo
+            echo '```'
+            cat /tmp/aggregator-report.txt || echo "(the check did not produce output)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Rebuild the site to confirm nothing broke
+        if: inputs.mode != 'report'
+        run: python build.py
+
+      - name: Open a review PR with the repairs
+        if: inputs.mode != 'report'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add content/articles
+
+          if git diff --cached --quiet; then
+            echo "Nothing was repaired, so there is no PR to open." \
+              >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          BRANCH="fix/aggregator-links-$(date -u +%Y%m%d-%H%M%S)"
+          git checkout -b "$BRANCH"
+          git commit -m "Repair aggregator source links ($(date -u +'%Y-%m-%d %H:%M'))"
+          git push origin "$BRANCH"
+
+          PR_URL="$(gh pr create \
+            --repo "$REPOSITORY" \
+            --base main \
+            --head "$BRANCH" \
+            --title "Repair aggregator source links — $(date -u +'%Y-%m-%d %H:%M')" \
+            --body-file /tmp/aggregator-report.txt)"
+
+          echo "Review PR: $PR_URL" >> "$GITHUB_STEP_SUMMARY"
