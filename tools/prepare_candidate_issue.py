@@ -199,6 +199,7 @@ def main() -> int:
 
     selected = []
     used_candidate_indexes = set()
+    unreadable_ids = set()
 
     for pick in picks:
         try:
@@ -210,6 +211,21 @@ def main() -> int:
         if original_index in used_candidate_indexes:
             continue
         used_candidate_indexes.add(original_index)
+
+        # A story that reached us through an aggregator carries only a teaser.
+        # Confirm the publisher's page can actually be read BEFORE offering it
+        # for review — otherwise the editor spends a shortlist slot on
+        # something that can only ever be written thin, and only finds out
+        # after picking it. `picks` is ordered best-first and the loop stops at
+        # shortlist_size, so a dropped story is backfilled by the next one.
+        if pipeline.requires_full_source(cand):
+            if not pipeline.fetch_full_article(cand.get("link", "")):
+                cid = cand.get("id")
+                if cid:
+                    unreadable_ids.add(cid)
+                print(f"  [shortlist] dropped (source unreadable): "
+                      f"{cand.get('title', '')[:60]}")
+                continue
 
         try:
             score = int(pick.get("score", 0))
@@ -333,6 +349,15 @@ def main() -> int:
     for cand in candidates:
         cid = cand.get("id")
         if not cid or cid in shortlisted_ids or cid in seen_ids:
+            continue
+        # A story whose source could not be read is not "passed over" — it is
+        # unusable. Burn it outright rather than parking it in an animal or
+        # strong hold, or the pipeline re-fetches the same blocked publisher
+        # every single day and re-offers a story it can never write properly.
+        if cid in unreadable_ids:
+            seen["ids"].append(cid)
+            seen_ids.add(cid)
+            marked += 1
             continue
         if pipeline.is_animal_story(cfg, cand):
             pipeline.hold_animal_candidate(seen, cid)
