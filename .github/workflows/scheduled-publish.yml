@@ -1,51 +1,20 @@
 name: Publish scheduled articles
 
-# Staggered articles are committed with a future `publish_at` and stay
-# invisible until build.py runs again after their embargo passes. Nothing else
-# rebuilds the site between merges, so without this workflow a scheduled
-# article would simply never appear.
-#
-# Runs every 15 minutes, but almost always does nothing: tools/check_due.py is
-# stdlib-only and runs before any dependency install, so the no-op path is a
-# checkout and a few seconds of Python. The full build and deploy happen only
-# when an article is genuinely due.
-#
-# Timing note: GitHub's scheduled runs are best-effort and are frequently
-# delayed under load, so an article set for 18:15 appears at roughly 18:15-18:30
-# rather than exactly on the minute. Publication order is always preserved,
-# which is what actually matters here.
-
 on:
   schedule:
-    # Explicit off-peak minutes rather than "*/15". Two reasons, both from
-    # GitHub's own documented behaviour:
-    #   1. "*/15" fires at :00, and the top of the hour is the single most
-    #      contended slot on the shared scheduler — GitHub explicitly advises
-    #      scheduling away from it to reduce delay.
-    #   2. :00/:15/:30/:45 are the minutes almost every other repo on the
-    #      platform picks, so they queue behind each other.
-    # Observed here: this workflow on "*/15" produced ONE run in two hours,
-    # while the hourly Facebook queue added around the same time reached
-    # sixteen. Scheduled runs are best-effort and never guaranteed, so treat
-    # lateness as normal and use "Run workflow" when something must go out now.
     - cron: "8,23,38,53 * * * *"
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 jobs:
   check:
-    # Deliberately NOT in the `pages` concurrency group. GitHub keeps only one
-    # pending run per group and cancels the previous one, so putting this cheap
-    # 15-minute check in the deploy group would mean checks cancelling each
-    # other whenever a merge-triggered build is running. Only the job that
-    # actually deploys takes the lock.
     runs-on: ubuntu-latest
+
     outputs:
       due: ${{ steps.check.outputs.due }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -56,33 +25,18 @@ jobs:
   publish:
     needs: check
     if: needs.check.outputs.due == 'true'
+
     runs-on: ubuntu-latest
-    concurrency:
-      # Same group as publish.yml, so a merge-triggered deploy and a scheduled
-      # deploy can never race each other onto Pages.
-      group: pages
-      cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          fetch-depth: 0
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Trigger Cloudflare rebuild
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Build the site
-        run: python build.py
-
-      - uses: actions/configure-pages@v5
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          git commit --allow-empty -m "Trigger Cloudflare scheduled publish"
+          git push
