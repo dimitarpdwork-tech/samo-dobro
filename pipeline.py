@@ -1065,6 +1065,24 @@ def fetch_full_article(url: str, timeout: int = 8) -> str | None:
         config = use_config()
         config.set("DEFAULT", "DOWNLOAD_TIMEOUT", str(timeout))
         downloaded = trafilatura.fetch_url(url, config=config)
+
+        if not downloaded:
+            # trafilatura.fetch_url sends its OWN User-Agent and none of the
+            # other headers a browser sends. A number of Bulgarian publishers
+            # (divident.eu among them) refuse that outright, so the story is
+            # written from the RSS snippet even though the page is perfectly
+            # readable. http_get already solves exactly this for feeds: bot UA
+            # first, then a full BROWSER_HEADERS retry. Reuse it here rather
+            # than giving up — see the comment on BROWSER_HEADERS for why the
+            # whole profile matters and swapping the UA alone is not enough.
+            try:
+                downloaded = http_get(url, timeout=timeout + 7).text
+                print(f"    [extract] {normalize_host(url)} needed the browser profile")
+            except Exception as exc:
+                print(f"    [extract] {normalize_host(url)} unreachable "
+                      f"({type(exc).__name__}) — using snippet")
+                return None
+
         if not downloaded:
             return None
         text = trafilatura.extract(
