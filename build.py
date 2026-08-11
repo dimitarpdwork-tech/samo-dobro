@@ -199,8 +199,15 @@ a{color:inherit;text-decoration:none}img,svg{max-width:100%}
 :focus-visible{outline:3px solid var(--p);outline-offset:2px;border-radius:6px}
 .wrap{max-width:var(--maxw);margin:0 auto;padding:0 22px}
 
-/* masthead */
-.masthead{padding:26px 0 10px}
+/* masthead.
+   NOTE: the header carries BOTH .masthead and .wrap. A `padding` *shorthand*
+   here would silently reset .wrap's `padding:0 22px` to 0 on the left/right
+   (same specificity, and .masthead is declared later), gluing the logo mark
+   and the search button to the screen edges — very visible on phones, where
+   there is no leftover max-width margin to hide it. Longhands only. */
+.masthead{padding-top:26px;padding-bottom:10px;
+padding-left:max(22px,env(safe-area-inset-left));
+padding-right:max(22px,env(safe-area-inset-right))}
 .mast-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .mark{flex:0 0 auto;display:grid;place-items:center}
 .brand h1,.brand .h1{font-family:var(--fd);font-weight:800;font-size:1.9rem;margin:0;letter-spacing:-.02em;line-height:1}
@@ -1543,7 +1550,7 @@ def build_city_tag_redirects(site, cities: dict) -> list[str]:
 <link rel="stylesheet" href="{site.u('/assets/style.css')}">
 </head>
 <body class="brand-{cfg['brand']}">
-<main class="wrap" style="padding:64px 0;text-align:center">
+<main class="wrap" style="padding:64px 22px;text-align:center">
 <p>{esc(notice)}</p>
 <p><a class="btn" href="{target_rel}">{esc(title)} →</a></p>
 </main>
