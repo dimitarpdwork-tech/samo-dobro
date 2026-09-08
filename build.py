@@ -2376,6 +2376,7 @@ def main() -> None:
     build_search_page(site)
     build_daily_digest(site)
     build_llms_txt(site)
+        write(DIST / "ads.txt", "google.com, pub-5837728291416240, DIRECT, f08c47fec0942fa0\n")
     write_og_jpeg_twins()
     print(f"[{cfg['site_name']}] built {len(articles)} articles, "
           f"{len(cities)} city hub(s), {len(redirect_paths)} tag redirect(s) → {DIST}")
