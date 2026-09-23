@@ -69,8 +69,14 @@ Prefer:
 - concrete positive outcomes;
 - Bulgarian/local relevance;
 - strong human, community, nature, science, culture or sports achievements;
-- stories with enough substance to become a useful article;
+- stories with enough factual depth to support a useful 300+ word article;
+- stories where useful context can be added from an official/primary or other authoritative source;
+- practical reader value: measurable impact, participation details, next steps, history, scale or follow-up;
 - variety across topics instead of many nearly identical stories.
+
+A story is NOT strong merely because it is positive. Reject a candidate when the available
+description suggests it would become little more than a rewritten announcement, headline expansion,
+generic praise, or a few paragraphs repeating one publisher's article.
 
 ANIMAL STORIES — GIVE THESE HIGH PRIORITY:
 Readers respond strongly to animal stories, and they are currently
@@ -94,6 +100,8 @@ A shortlist full of appeals for help is a failure, not a success.
 Reject:
 - war, crime, accidents, deaths, scandals, party politics, elections;
 - vague PR announcements with no concrete positive outcome;
+- one-line announcements, listings, routine event notices or results with too little context;
+- stories that cannot plausibly support original reader value beyond paraphrasing the source;
 - negative stories merely framed optimistically;
 - duplicates of an already published event.
 
@@ -212,20 +220,17 @@ def main() -> int:
             continue
         used_candidate_indexes.add(original_index)
 
-        # A story that reached us through an aggregator carries only a teaser.
-        # Confirm the publisher's page can actually be read BEFORE offering it
-        # for review — otherwise the editor spends a shortlist slot on
-        # something that can only ever be written thin, and only finds out
-        # after picking it. `picks` is ordered best-first and the loop stops at
-        # shortlist_size, so a dropped story is backfilled by the next one.
-        if pipeline.requires_full_source(cand):
-            if not pipeline.fetch_full_article(cand.get("link", "")):
-                cid = cand.get("id")
-                if cid:
-                    unreadable_ids.add(cid)
-                print(f"  [shortlist] dropped (source unreadable): "
-                      f"{cand.get('title', '')[:60]}")
-                continue
+        # AdSense remediation: never offer a story that can only become a
+        # snippet rewrite. Confirm the publisher's full article is readable
+        # BEFORE it reaches the human shortlist. This fetch is free; it avoids
+        # paying for writing calls that would later fail the quality gate.
+        if not pipeline.fetch_full_article(cand.get("link", "")):
+            cid = cand.get("id")
+            if cid:
+                unreadable_ids.add(cid)
+            print(f"  [shortlist] dropped (full source unreadable): "
+                  f"{cand.get('title', '')[:60]}")
+            continue
 
         try:
             score = int(pick.get("score", 0))
@@ -272,7 +277,7 @@ def main() -> int:
     lines = [
         "# 📰 Кандидати за Добро Дело",
         "",
-        f"Подбрах **{len(selected)}** възможни истории. Тук няма написани статии и няма генерирани картинки — това е само евтиният редакционен подбор.",
+        f"Подбрах **{len(selected)}** възможни истории с достъпен пълен източник и достатъчен потенциал за разработване. Тук няма написани статии и няма генерирани картинки — това е само евтиният редакционен подбор.",
         "",
         "Избери колкото искаш, като оставиш **един коментар**:",
         "",

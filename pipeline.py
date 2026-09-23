@@ -1211,72 +1211,73 @@ CANDIDATES
 
 def build_writing_prompt(cfg: dict, story: dict, full_text: str | None, use_search: bool = False) -> str:
     source_block = (
-        f"FULL SOURCE ARTICLE (write from this):\n{full_text}"
+        f"FULL PRIMARY SOURCE ARTICLE (core facts must come from this):\n{full_text}"
         if full_text else
-        f"SOURCE SUMMARY (only this snippet is available):\n{clean_text(story.get('summary',''), 600)}"
+        f"SOURCE SUMMARY (insufficient for normal publication):\n{clean_text(story.get('summary',''), 600)}"
     )
 
     if full_text:
         lede_rule = (
-            "- Open with an answer-first first paragraph of roughly 80-110 words: "
-            "what happened, who was involved, where it happened, and the concrete positive outcome. "
-            "Do not stretch the paragraph if the facts do not support that length."
+            "- Open answer-first: what happened, who was involved, where, and the concrete positive outcome. "
+            "Do not use a generic inspirational introduction."
         )
-        word_target = "250-340 words total"
+        word_target = "320-480 words total"
         support_rule = (
-            "- Add 1-2 short supporting paragraphs using concrete details from the source.\n"
-            "- Add ONE short 'why it matters' paragraph (roughly 50-90 words) ONLY if the source "
-            "supports a real significance, consequence, background, or human angle. If there is no "
-            "meaningful extra point to make, omit it instead of padding the story."
+            "- Build 3-5 useful paragraphs from concrete source facts, not a padded rewrite.\n"
+            "- Add context that helps a reader understand scale, history, practical consequences, or what happens next. "
+            "Prefer specific numbers, dates, previous results, official programmes, eligibility/participation details, or "
+            "a directly relevant comparison when verified.\n"
+            "- If the source itself does not contain enough substance for a genuinely useful article, say so by returning "
+            "===REJECT=== as the BODY instead of padding."
         )
     else:
-        lede_rule = (
-            "- Open with the single most important fact from the snippet in 1-2 clear sentences. "
-            "Do not pretend the snippet contains more detail than it does."
-        )
-        word_target = "140-200 words total"
+        lede_rule = "- State only what the snippet actually proves."
+        word_target = "Do not attempt a normal article"
         support_rule = (
-            "- Add only the supporting details that are actually present in the snippet. "
-            "Do not add an analysis/opinion section and do not pad the article."
+            "- A snippet-only item is below Добро Дело's publication standard. Return ===REJECT=== as the BODY."
         )
 
     if use_search and full_text:
         context_rule = (
-            "- You MAY add one short verified-context paragraph (roughly 60-100 words) when web search "
-            "finds genuinely useful background that helps explain why the story matters. Use only facts "
-            "you verified. If you cite an external source, use exactly [link text](URL). "
-            "Do not add context merely to make the article longer."
+            "- Use web search selectively to add ONE genuinely useful verified context block. Prefer an official, primary, "
+            "institutional, academic, organiser, municipality, university, NGO, federation, or other first-party source. "
+            "If no strong extra source exists, do not add filler.\n"
+            "- Any fact that comes from web search rather than the primary source MUST be linked inline as "
+            "[descriptive source text](https://...). Never cite a search result you did not actually verify."
         )
     else:
         context_rule = (
-            "- Do NOT invent an editorial thesis, counterargument, generic praise, or broad social analysis. "
-            "The article should end when the useful facts and a source-supported significance are covered."
+            "- Do not invent outside context. Use only the supplied full source and stop when the useful facts are exhausted."
         )
 
-    return f'''You are the editor of "{cfg['site_name']}", writing one concise good-news article in {cfg['language_name']}.
+    return f'''You are the editor of "{cfg['site_name']}", preparing one useful, independently valuable good-news article in {cfg['language_name']}.
 
 HEADLINE OF THE STORY: {story['title']}
-SOURCE: {story['source']}
+PRIMARY SOURCE: {story['source']}
 
 {source_block}
 
-Write an original article in {cfg['language_name']}. Rules:
-- Use ONLY facts present in the source above for the core story. Never invent numbers, names, quotes, dates, motives, rankings, or claims.
-- Include 2-4 CONCRETE details from the source when available: names, places, numbers, circumstances, actions or outcomes.
+The goal is NOT to paraphrase another publisher. A reader should gain useful context from Добро Дело that is not obvious from merely reading the headline.
+
+Rules:
+- Use the supplied primary source for the core event. Never invent names, numbers, quotes, dates, motives, rankings, causation, or outcomes.
+- Include at least 4 concrete details when the source supports them: names, places, dates, numbers, actions, results, eligibility, next steps, previous editions, or measurable impact.
 {lede_rule}
 {support_rule}
 {context_rule}
-- Find the actual story beyond the headline, but do not manufacture depth that is not there.
-- Warm, human, concrete tone. Positive without becoming sugary or promotional.
+- Do not create a generic "why it matters" paragraph. Explain significance only with specific, verifiable information.
+- Avoid vague praise such as "това показва", "вдъхновяващ пример", "важна стъпка", "доказателство, че", unless a concrete fact immediately follows.
+- No promotional language, no fabricated quotes, and no claims about motives.
+- Warm but journalistic Bulgarian. Natural paragraph rhythm; no repetitive template wording.
 - {word_target}.
-- Native-level {cfg['language_name']}. Never invent words. Check noun-adjective gender/number agreement. Never use Russian spellings or words.
-- Avoid repetitive AI phrases such as "това показва", "това е доказателство", "вдъхновяващ пример", unless genuinely necessary.
+- Native-level {cfg['language_name']}. Check grammar, noun-adjective agreement, names and transliteration.
+- Use short ## subheadings only when they genuinely improve a longer article; do not force them.
 
-Also extract 3-4 short "quick facts" — standalone phrases under ~12 words each.
+Also extract 3-5 short "quick facts" that contain concrete information, not slogans.
 
-If the story is specifically tied to a particular Bulgarian city or town, include that city's name as one of the tags, in Bulgarian. Add a city tag ONLY when the story itself is actually about that place — never infer a city from the source/publisher name.
+If the story is specifically tied to a Bulgarian city or town, include that city's name as one of the tags. Add a city tag only when the story itself is actually about that place.
 
-Respond using EXACTLY this plain-text format — nothing before or after it:
+Respond using EXACTLY this plain-text format:
 ===HEADLINE===
 <max 75 chars, in {cfg['language_name']}>
 ===SLUG===
@@ -1288,17 +1289,16 @@ Respond using EXACTLY this plain-text format — nothing before or after it:
 ===SUMMARY_SHORT===
 <max 160 chars teaser>
 ===BODY===
-<the concise article, with one fully blank line between paragraphs>
+<article body, or exactly ===REJECT=== if the material cannot support a useful article>
 ===QUICK_FACTS===
 <first fact>
 <second fact>
 <third fact>
 ===TAGS===
-<tag one, tag two, tag three — include a city only when clearly supported by the story; ALWAYS include the tag "животни" when the story is genuinely about animals (rescue, treatment, adoption, release, shelters, wildlife), so these stories are collectable>
+<tag one, tag two, tag three — ALWAYS include "животни" for genuine animal rescue/treatment/adoption/release stories>
 ===IMAGE_QUERY===
-<2-4 words English, a concrete scene, action, or object — NEVER a scoreboard, chart, table, ranking list, readable text/numbers, a real person's name, or a falsely claimed specific location>
+<2-4 words English describing a concrete scene, action, or object; never readable text/numbers, a real person's name, or a falsely claimed exact location>
 ===END=>'''
-
 
 def parse_json_object(raw: str) -> dict | None:
     """Parse a single JSON object from a model response, tolerant of fences/prose."""
@@ -1351,6 +1351,43 @@ def parse_delimited_article(raw: str) -> dict | None:
         "tags": tags,
         "image_query": extract("IMAGE_QUERY"),
     }
+
+
+def validate_written_article(cfg: dict, written: dict, full_text: str | None) -> tuple[bool, str]:
+    """Cheap deterministic gate before an article can be saved.
+
+    This deliberately checks structure/value signals rather than trying to
+    algorithmically judge prose quality. It prevents the failure modes that
+    caused thin pages: snippet-only drafts, obvious rejection markers, very
+    short rewrites, and generic filler with too few concrete details.
+    """
+    body = (written.get("body") or "").strip()
+    if not full_text:
+        return False, "full primary source is required"
+    if not body or body == "===REJECT===" or "===REJECT===" in body:
+        return False, "writer rejected insufficient source material"
+
+    # Markdown links count as words here, which is fine: this is a floor, not
+    # a precise readability metric.
+    words = re.findall(r"\b[\wА-Яа-я]+\b", body, flags=re.UNICODE)
+    min_words = int(cfg.get("min_article_words", 300))
+    if len(words) < min_words:
+        return False, f"article too short ({len(words)} words; minimum {min_words})"
+
+    paragraphs = [p.strip() for p in body.split("\n\n") if p.strip() and not p.strip().startswith("#")]
+    if len(paragraphs) < 3:
+        return False, "article needs at least three substantive paragraphs"
+
+    # Numbers, dates, proper names and inline source links are imperfect but
+    # useful proxies for factual density. Do not require a secondary link for
+    # every story because some primary sources are already self-contained.
+    concrete_signals = len(re.findall(r"\b\d+[\d.,:%-]*\b", body))
+    concrete_signals += len(re.findall(r"\[[^\]]{3,}\]\(https?://[^)]+\)", body))
+    concrete_signals += sum(1 for f in (written.get("quick_facts") or []) if len(str(f).strip()) >= 8)
+    if concrete_signals < 3:
+        return False, "article lacks enough concrete factual detail"
+
+    return True, ""
 
 
 def call_claude(cfg: dict, prompt: str, tools: list[dict] | None = None,
@@ -2275,6 +2312,7 @@ def save_one_written(cfg: dict, written: dict, cand: dict, seen: dict,
         "expected_source_host": cand.get("expected_source_host", ""),
         "full_source_extracted": bool(cand.get("_full_source_extracted")),
         "sensitive_topic": bool(cand.get("_sensitive_topic")),
+        "quality_version": int(cfg.get("quality_version", 1)),
         "lang": cfg["lang"],
     }
     # Only record an embargo when there is one. An article going live now
@@ -2328,7 +2366,7 @@ def run_two_phase(cfg: dict, candidates: list[dict], seen: dict, max_new: int) -
     saved, new_urls = 0, []
     seen_ids = all_seen_ids(seen)
     context_search = cfg.get("context_search", False)
-    search_tools = [{"type": "web_search_20250305", "name": "web_search"}] if context_search else None
+    search_tools = ([{"type": "web_search_20250305", "name": "web_search", "max_uses": int(cfg.get("web_search_max_uses", 1))}] if context_search else None)
     for pick in picks:
         try:
             cand = candidates[int(pick["candidate"])]
@@ -2358,7 +2396,11 @@ def run_two_phase(cfg: dict, candidates: list[dict], seen: dict, max_new: int) -
             )
             continue
 
-        tag = "full source" if full_text else "snippet only"
+        if not full_text:
+            print(f"    [skip · no full source] {cand['title'][:65]}")
+            continue
+
+        tag = "full source"
         write_prompt = build_writing_prompt(
             cfg, cand, full_text, use_search=context_search
         )
@@ -2368,6 +2410,10 @@ def run_two_phase(cfg: dict, candidates: list[dict], seen: dict, max_new: int) -
             print(f"    [skip] writing failed for: {cand['title'][:55]}")
             print(f"    [debug] raw response start: {raw_response[:300]!r}")
             print(f"    [debug] raw response end: {raw_response[-300:]!r}")
+            continue
+        quality_ok, quality_reason = validate_written_article(cfg, written, full_text)
+        if not quality_ok:
+            print(f"    [skip · quality] {cand['title'][:55]} — {quality_reason}")
             continue
         url = save_one_written(cfg, written, cand, seen)
         if url:
@@ -2447,7 +2493,7 @@ def rewrite_articles(cfg: dict, limit: int | None = None, force: bool = False) -
         pseudo = {"title": art.get("headline", ""), "source": art.get("source_name", ""),
                   "summary": art.get("summary_short", ""), "link": src_url}
         context_search = cfg.get("context_search", False)
-        search_tools = [{"type": "web_search_20250305", "name": "web_search"}] if context_search else None
+        search_tools = ([{"type": "web_search_20250305", "name": "web_search", "max_uses": int(cfg.get("web_search_max_uses", 1))}] if context_search else None)
         raw_response = call_claude(
             cfg, build_writing_prompt(cfg, pseudo, full_text, use_search=context_search),
             tools=search_tools, hard_fail=False)
@@ -2457,6 +2503,11 @@ def rewrite_articles(cfg: dict, limit: int | None = None, force: bool = False) -
             print(f"  [keep] rewrite failed, left untouched: {art.get('headline','')[:50]}")
             print(f"  [debug] raw response start: {raw_response[:300]!r}")
             print(f"  [debug] raw response end: {raw_response[-300:]!r}")
+            continue
+        quality_ok, quality_reason = validate_written_article(cfg, written, full_text)
+        if not quality_ok:
+            parse_failed += 1
+            print(f"  [keep] rewrite below quality floor: {art.get('headline','')[:50]} — {quality_reason}")
             continue
 
         # Merge the improved fields, preserving everything SEO-critical.
@@ -2471,6 +2522,8 @@ def rewrite_articles(cfg: dict, limit: int | None = None, force: bool = False) -
         if written.get("quick_facts"):
             art["quick_facts"] = [c for c in (clip(f, 120) for f in written["quick_facts"][:5]) if c]
         art["rewritten"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        art["full_source_extracted"] = True
+        art["quality_version"] = int(cfg.get("quality_version", 1))
         # slug, id, published, photo_* all deliberately left as-is.
 
         with open(path, "w", encoding="utf-8") as f:

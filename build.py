@@ -96,6 +96,19 @@ def load_articles(cfg) -> list[dict]:
                 if a.get("category") not in cfg["categories"]:
                     a["category"] = next(iter(cfg["categories"]))
                 a["_dt"] = datetime.strptime(a["published"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                # AdSense remediation: preserve old URLs, but stop promoting and
+                # indexing clearly thin legacy pages until they are rewritten
+                # to the current editorial standard. Seed/pillar pieces are
+                # intentionally exempt because they are original site content.
+                body_words = len(re.findall(r"\b[\wА-Яа-я]+\b", a.get("body", ""), flags=re.UNICODE))
+                current_qv = int(cfg.get("quality_version", 1))
+                article_qv = int(a.get("quality_version", 0) or 0)
+                a["_thin_legacy"] = (
+                    not str(a.get("id", "")).startswith("seed")
+                    and not a.get("pillar")
+                    and article_qv < current_qv
+                    and (not a.get("full_source_extracted") or body_words < 220)
+                )
                 articles.append(a)
             except Exception as exc:
                 skipped.append((path, exc))
@@ -176,6 +189,8 @@ def build_tag_index(articles: list[dict], aliases: dict | None = None) -> dict:
     punctuation/emoji) are skipped."""
     idx: dict[str, dict] = {}
     for a in articles:
+        if a.get("_thin_legacy"):
+            continue
         for t in a.get("tags", []):
             slug = tag_slug(t, aliases)
             if not slug:
@@ -720,7 +735,7 @@ def author_ld(site) -> dict:
     editor_name = cfg.get("editor_name", "")
     if editor_name:
         return {"@type": "Person", "name": editor_name,
-                "description": "Articles on this site are AI-drafted from a credited source and reviewed by this editor before publication.",
+                "description": "This editor selects and reviews articles before publication; AI may assist research and draft preparation from credited sources.",
                 "url": site.abs_(f'/{cfg["about_path"]}/#editorial-process')}
     name = cfg.get("byline_name", f'{cfg["site_name"]} AI Editorial System')
     return {"@type": "Organization", "name": name,
@@ -1171,6 +1186,8 @@ def build_lists(site) -> None:
     now = datetime.now(timezone.utc)
     pinned = None
     for a in site.articles:
+        if a.get("_thin_legacy"):
+            continue
         pin_until = a.get("pin_until")
         if pin_until:
             try:
@@ -1180,9 +1197,10 @@ def build_lists(site) -> None:
                     break  # site.articles is newest-first; first active pin wins
             except Exception:
                 pass
-    groups = [("home", "/", site.articles, [], cfg["description"], cfg["site_name"] + " — " + cfg["tagline"], "")]
+    public_articles = [a for a in site.articles if not a.get("_thin_legacy")]
+    groups = [("home", "/", public_articles, [], cfg["description"], cfg["site_name"] + " — " + cfg["tagline"], "")]
     for cid, cat in cfg["categories"].items():
-        cat_arts = [a for a in site.articles if a["category"] == cid]
+        cat_arts = [a for a in public_articles if a["category"] == cid]
         # Pillar/guide articles are pulled out of the normal reverse-chronological
         # flow entirely — they're pinned once at the top of page 1 instead of
         # paginating away like a dated news item as new content publishes.
@@ -1756,7 +1774,7 @@ def build_daily_digest(site) -> None:
     sending is automated later."""
     cfg, ui = site.cfg, site.cfg["ui"]
     today = datetime.now(timezone.utc).date()
-    todays = [a for a in site.articles if a["_dt"].date() == today]
+    todays = [a for a in site.articles if a["_dt"].date() == today and not a.get("_thin_legacy")]
     digest_path = cfg.get("digest_path", "today")
     title = ui.get("digest_title", "Today's Good News")
 
@@ -1806,16 +1824,16 @@ def build_articles(site, linked_tags: set, city_slugs: set | None = None) -> Non
             # accumulates in the same category — confirmed via a real SEO
             # audit finding zero cross-links between the 3 Nature guides
             # despite sharing a category.
-            siblings = [r for r in site.articles if r["category"] == a["category"]
+            siblings = [r for r in site.articles if not r.get("_thin_legacy") and r["category"] == a["category"]
                         and r["slug"] != a["slug"] and r.get("pillar")]
             related = siblings[:3]
             if len(related) < 3:
                 seen = {r["slug"] for r in related} | {a["slug"]}
-                related += [r for r in site.articles if r["category"] == a["category"]
+                related += [r for r in site.articles if not r.get("_thin_legacy") and r["category"] == a["category"]
                             and r["slug"] not in seen][: 3 - len(related)]
         else:
             a_tags = set(a.get("tags", []))
-            same_cat = [r for r in site.articles if r["category"] == a["category"] and r["slug"] != a["slug"]]
+            same_cat = [r for r in site.articles if not r.get("_thin_legacy") and r["category"] == a["category"] and r["slug"] != a["slug"]]
             # Prioritize articles sharing an actual tag — genuinely topical,
             # not just "published in the same broad category around the same
             # time," which could surface an unrelated story just because it's
@@ -1828,7 +1846,7 @@ def build_articles(site, linked_tags: set, city_slugs: set | None = None) -> Non
                 related += [r for r in same_cat if r["slug"] not in seen][: 3 - len(related)]
         if len(related) < 3:
             seen = {r["slug"] for r in related} | {a["slug"]}
-            related += [r for r in site.articles if r["slug"] not in seen][: 3 - len(related)]
+            related += [r for r in site.articles if not r.get("_thin_legacy") and r["slug"] not in seen][: 3 - len(related)]
         rel_html = ""
         if related:
             # One big obvious next story first, then the usual grid for anyone
@@ -1852,11 +1870,12 @@ def build_articles(site, linked_tags: set, city_slugs: set | None = None) -> Non
             for t in a.get("tags", []))
         src = ""
         if a.get("source_url"):
-            added_context_label = ui.get("added_context_label", "Additional context and analysis")
-            byline_name = cfg.get("byline_name", cfg["site_name"] + " AI")
+            added_context_label = ui.get("added_context_label", "Sources and additional context")
+            byline_name = cfg.get("byline_name", cfg["site_name"])
             src = (f'<aside class="srcbox"><strong>{esc(ui["source"])}:</strong> '
                    f'<a href="{esc(a["source_url"])}" target="_blank" rel="noopener">{esc(a["source_name"])}</a>'
-                   f'<p class="ainote">{esc(added_context_label)}: {esc(byline_name)}</p></aside>')
+                   f'<p class="ainote">{esc(added_context_label)}: {esc(byline_name)}. '
+                   f'{esc(ui.get("ai_note", ""))}</p></aside>')
         # Readers who just finished a story about a local rescue or a school
         # are the single best discovery channel this site has — they know
         # about things before any feed does. The submission page existed only
@@ -1880,10 +1899,12 @@ def build_articles(site, linked_tags: set, city_slugs: set | None = None) -> Non
                                  f'aria-label="{esc(ui.get("quick_facts_label", "Quick facts"))}">{items}</ul>')
         editor_name = cfg.get("editor_name", "")
         if editor_name:
-            byline_text = (f'{esc(ui.get("ai_written_label", "AI-written"))}, '
-                            f'{esc(ui.get("reviewed_by_label", "reviewed by"))} {esc(editor_name)}')
+            byline_text = (
+                f'{esc(ui.get("reviewed_by_label", "Редакционен преглед:"))} {esc(editor_name)} · '
+                f'{esc(ui.get("ai_written_label", "AI подпомага проучването и черновата"))}'
+            )
         else:
-            byline_text = f'{esc(ui.get("byline_label", "Compiled by"))} {esc(cfg.get("byline_name", cfg["site_name"] + " AI"))}'
+            byline_text = f'{esc(ui.get("byline_label", "Редакция"))} {esc(cfg.get("byline_name", cfg["site_name"]))}'
         article_url = site.abs_(site.article_path(a))
         share_html = build_share_row(cfg, ui, a["slug"], article_url, a["headline"])
         body = f"""<article class="article">
@@ -1939,29 +1960,29 @@ def build_articles(site, linked_tags: set, city_slugs: set | None = None) -> Non
                         description=a["meta_description"] or a["summary_short"],
                         path=path, body=body, jsonld=[ld, breadcrumb_ld(site, crumbs)], og_type="article",
                         og_image=og_img or img_url, og_image_type=og_mime,
-                        og_image_width=og_w, og_image_height=og_h))
+                        og_image_width=og_w, og_image_height=og_h,
+                        noindex=bool(a.get("_thin_legacy"))))
 
 
 ABOUT = {
     "bg": [
         ("Защо съществуваме",
-         "Отвориш ли новините, светът изглежда черен: катастрофи, скандали, войни, поскъпване. Но това е само половината истина. Всеки ден в България лекари спасяват животи, доброволци садят гори, деца печелят олимпиади, съседи си помагат. {site} събира точно тези позитивни новини от България — само тях."),
+         "Отвориш ли новините, светът изглежда черен: катастрофи, скандали, войни, поскъпване. Но това е само половината истина. Всеки ден в България лекари спасяват животи, доброволци възстановяват природа, деца печелят олимпиади, общности решават реални проблеми. {site} търси точно тези истории — без да превръща всяко положително съобщение в статия."),
         ("Как избираме новините",
-         "Наш AI редактор чете водещите български медии няколко пъти дневно и подбира единствено истински добрите новини: конкретни хубави събития, без трагедии „с позитивен привкус“, без политически битки, без криминални хроники. После написва оригинална статия на български — с точните факти от източника, плюс собствен контекст и анализ, обясняващи защо събитието има значение."),
-        ("Прозрачност",
-         "Всяка статия комбинира точните факти от посочения източник с допълнителен контекст и анализ, добавени от нашата редакция — обясняваме защо дадено събитие има значение, а не просто го преразказваме. Никога не добавяме измислени факти. Под всяка новина стои връзка към оригиналния репортаж — препоръчваме да го отворите за пълната история. Ако забележите грешка, пишете ни и ще я поправим."),
+         "Автоматизацията ни помага да откриваме кандидати от публични източници, но публикацията не е автоматична. Човек избира кои истории имат достатъчно факти и реална стойност за читателя. За новите новини изискваме да можем да прочетем пълния първоизточник; ако разполагаме само с RSS откъс или кратко съобщение, материалът не се публикува."),
+        ("Как разработваме материалите",
+         "AI подпомага проучването и подготовката на чернова. Основното събитие се проверява спрямо посочения първоизточник. Когато допълнителният контекст наистина помага — например официални данни, предишни резултати, правила за участие или информация от институция — търсим допълнителен надежден източник и го свързваме в текста. Не добавяме контекст само за да направим статията по-дълга."),
+        ("Прозрачност и редакционен преглед",
+         "Всяка статия посочва основния си източник. Материалите се преглеждат от Димитър Иванов преди публикуване. AI не е автор с отделна редакционна отговорност, а инструмент в процеса на проучване и подготовка. Ако забележите грешка, пишете ни — коригираме или премахваме материала."),
         ("Свържи се с нас",
-         "Знаеш за добра новина, която сме пропуснали? Пиши ни на {email} — най-хубавите истории често идват от читатели."),
+         "Знаеш за добра новина, която сме пропуснали? Пиши ни на {email}. Истории, изпратени от читатели, организации и местни общности, са един от начините Добро Дело да публикува повече съдържание, което не започва като преразказ на друга медия."),
     ],
     "en": [
-        ("Why we exist",
-         "Open any news site and the world looks dark: crashes, scandals, wars, prices. But that is only half the truth. Every single day, somewhere on this planet, a species comes back from the brink, a disease loses ground, a stranger helps a stranger. {site} collects exactly those stories — and only those."),
-        ("How stories are chosen",
-         "Our AI editor reads trusted international sources several times a day and selects only genuinely good news: concrete positive outcomes, no tragedies dressed up with a silver lining, no partisan politics, no crime. It then writes a short, human summary in plain English."),
-        ("Transparency",
-         "Every summary is written by an AI from the linked source's reporting and never adds invented facts. Each story credits and links the original publication — we encourage you to read it in full. Spot an error? Tell us and we will fix it."),
-        ("Get in touch",
-         "Know a good story we missed? Write to {email} — the best finds often come from readers."),
+        ("Why we exist", "{site} publishes constructive, positive stories while avoiding crime, scandal and partisan noise."),
+        ("How stories are chosen", "Automation helps discover candidates, but publication is not automatic. A human selects stories with enough factual depth and reader value, and normal news articles require access to the full primary source."),
+        ("How articles are developed", "AI may assist research and draft preparation. Core facts are checked against the credited source, and useful additional context is added only when it can be verified from a reliable source."),
+        ("Transparency and review", "Every article identifies its primary source and is reviewed before publication. AI is a tool in the workflow, not an independent accountable author. Corrections are made when errors are reported."),
+        ("Get in touch", "Know a good story we missed? Write to {email}."),
     ],
 }
 
@@ -2054,7 +2075,7 @@ def build_404(site) -> None:
 def build_feed(site) -> None:
     cfg = site.cfg
     items = ""
-    for a in site.articles[:30]:
+    for a in [x for x in site.articles if not x.get("_thin_legacy")][:30]:
         items += f"""<item>
 <title>{esc(a['headline'])}</title>
 <link>{site.abs_(site.article_path(a))}</link>
@@ -2085,7 +2106,7 @@ def build_news_sitemap(site) -> None:
     valid per the Sitemaps protocol)."""
     cfg = site.cfg
     cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
-    recent = [a for a in site.articles if a["_dt"] >= cutoff]
+    recent = [a for a in site.articles if a["_dt"] >= cutoff and not a.get("_thin_legacy")]
     items = ""
     for a in recent:
         pub_date = a["_dt"].strftime("%Y-%m-%dT%H:%M:%S+00:00")
@@ -2157,7 +2178,7 @@ def build_sitemap(site, tag_slugs: set, extra_paths: list[str] | None = None) ->
     # links, so the sitemap doesn't send Google a mixed noindex-but-submitted
     # signal.
     for cid in cfg["categories"]:
-        cat_arts = [a for a in site.articles if a["category"] == cid]
+        cat_arts = [a for a in site.articles if a["category"] == cid and not a.get("_thin_legacy")]
         cat_lastmod = _lastmod(cat_arts[0]) if cat_arts else None
         urls.append((site.abs_(site.cat_path(cid)), cat_lastmod))
     for slug in sorted(tag_slugs):
@@ -2166,10 +2187,10 @@ def build_sitemap(site, tag_slugs: set, extra_paths: list[str] | None = None) ->
         # would put 404s in the sitemap.
         if slug in cfg["categories"] or slug in cfg.get("known_cities", {}):
             continue
-        tag_arts = [a for a in site.articles if slug in {tag_slug(t, cfg.get("tag_aliases", {})) for t in a.get("tags", [])}]
+        tag_arts = [a for a in site.articles if not a.get("_thin_legacy") and slug in {tag_slug(t, cfg.get("tag_aliases", {})) for t in a.get("tags", [])}]
         tag_lastmod = _lastmod(tag_arts[0]) if tag_arts else None
         urls.append((site.abs_(site.tag_path(slug)), tag_lastmod))
-    urls += [(site.abs_(site.article_path(a)), _lastmod(a)) for a in site.articles]
+    urls += [(site.abs_(site.article_path(a)), _lastmod(a)) for a in site.articles if not a.get("_thin_legacy")]
     body = "".join(
         f"<url><loc>{esc(u)}</loc>{f'<lastmod>{d}</lastmod>' if d else ''}</url>" for u, d in urls
     )
@@ -2205,6 +2226,8 @@ def build_search_index(site) -> None:
     cfg = site.cfg
     items = []
     for a in site.articles:
+        if a.get("_thin_legacy"):
+            continue
         cat = cfg["categories"].get(a["category"], {})
         items.append({
             "t": a["headline"], "s": a["summary_short"],
@@ -2299,9 +2322,10 @@ def build_llms_txt(site) -> None:
 {cfg['description']}
 
 {cfg['site_name']} is an independently published, AI-assisted good-news site.
-Every article is an original summary written from a single credited source,
-never invented, always linked. See {site.abs_('/' + cfg['about_path'] + '/')} for
-the full editorial policy and AI-disclosure statement.
+Automation helps discover stories and prepare research/drafts, while publication
+is human-selected and reviewed. New news articles require a readable full primary
+source; useful additional context is linked when verified. See
+{site.abs_('/' + cfg['about_path'] + '/')} for the full editorial policy and AI-disclosure statement.
 
 ## Categories
 {categories}
@@ -2378,7 +2402,9 @@ def main() -> None:
     build_llms_txt(site)
     write(DIST / "ads.txt", "google.com, pub-5837728291416240, DIRECT, f08c47fec0942fa0\n")
     write_og_jpeg_twins()
-    print(f"[{cfg['site_name']}] built {len(articles)} articles, "
+    thin_legacy = sum(1 for a in articles if a.get("_thin_legacy"))
+    print(f"[{cfg['site_name']}] built {len(articles)} article pages "
+          f"({thin_legacy} thin legacy page(s) preserved but de-emphasized/noindexed), "
           f"{len(cities)} city hub(s), {len(redirect_paths)} tag redirect(s) → {DIST}")
 
 
