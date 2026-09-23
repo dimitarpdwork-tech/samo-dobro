@@ -1221,7 +1221,7 @@ def build_writing_prompt(cfg: dict, story: dict, full_text: str | None, use_sear
             "- Open answer-first: what happened, who was involved, where, and the concrete positive outcome. "
             "Do not use a generic inspirational introduction."
         )
-        word_target = "320-480 words total"
+        word_target = "280-420 words total; stop earlier if all useful verified facts are already covered"
         support_rule = (
             "- Build 3-5 useful paragraphs from concrete source facts, not a padded rewrite.\n"
             "- Add context that helps a reader understand scale, history, practical consequences, or what happens next. "
@@ -1239,11 +1239,14 @@ def build_writing_prompt(cfg: dict, story: dict, full_text: str | None, use_sear
 
     if use_search and full_text:
         context_rule = (
-            "- Use web search selectively to add ONE genuinely useful verified context block. Prefer an official, primary, "
-            "institutional, academic, organiser, municipality, university, NGO, federation, or other first-party source. "
-            "If no strong extra source exists, do not add filler.\n"
+            "- Use web search selectively to add ONE genuinely useful verified context block. Search FIRST for a first-party "
+            "or official source: the institution, organiser, municipality, university, NGO, federation, rescue centre, "
+            "government body, club, or other entity directly responsible for the fact.\n"
+            "- Do NOT use another news article merely to establish a fact that is available from the responsible organisation. "
+            "If the one allowed search does not surface a strong first-party/official source, omit the extra context rather than "
+            "padding the article with weaker secondary material.\n"
             "- Any fact that comes from web search rather than the primary source MUST be linked inline as "
-            "[descriptive source text](https://...). Never cite a search result you did not actually verify."
+            "[descriptive source text](https://...). Never cite a result you did not actually verify."
         )
     else:
         context_rule = (
@@ -1265,8 +1268,11 @@ Rules:
 {lede_rule}
 {support_rule}
 {context_rule}
-- Do not create a generic "why it matters" paragraph. Explain significance only with specific, verifiable information.
-- Avoid vague praise such as "това показва", "вдъхновяващ пример", "важна стъпка", "доказателство, че", unless a concrete fact immediately follows.
+- Do not create a generic "why it matters" paragraph. Added value means MORE VERIFIED INFORMATION, not your interpretation.
+- Do not infer what a result "shows" about talent, character, tactics, preparation or significance. Do not guess causes, motives, likely next steps, future plans, or what would "normally" happen next unless a cited source explicitly states it.
+- Do not manufacture comparisons from raw numbers. If two datasets are not directly comparable, state them separately and let the reader interpret them.
+- Avoid editorial filler such as "това показва", "добавя тежест", "обяснява стойността", "печеливша формула", "обичайно се дължи", "следващата стъпка би била", "вдъхновяващ пример" and "доказателство, че".
+- Every sentence must add a new verified fact, useful context, or practical information. Do not repeat or rephrase a fact already stated.
 - No promotional language, no fabricated quotes, and no claims about motives.
 - Warm but journalistic Bulgarian. Natural paragraph rhythm; no repetitive template wording.
 - {word_target}.
@@ -1367,21 +1373,64 @@ def validate_written_article(cfg: dict, written: dict, full_text: str | None) ->
     if not body or body == "===REJECT===" or "===REJECT===" in body:
         return False, "writer rejected insufficient source material"
 
-    # Markdown links count as words here, which is fine: this is a floor, not
-    # a precise readability metric.
-    words = re.findall(r"\b[\wА-Яа-я]+\b", body, flags=re.UNICODE)
-    min_words = int(cfg.get("min_article_words", 300))
+    # Count only reader-visible words. Markdown URLs previously inflated this
+    # number badly (every path segment looked like another "word"), allowing a
+    # sub-300-word article with long citations to pass a 300-word floor.
+    visible_body = re.sub(r"\[([^\]]+)\]\(https?://[^)]+\)", r"\1", body)
+    words = re.findall(r"[A-Za-zА-Яа-я0-9]+(?:[-–][A-Za-zА-Яа-я0-9]+)?", visible_body)
+    min_words = int(cfg.get("min_article_words", 260))
     if len(words) < min_words:
-        return False, f"article too short ({len(words)} words; minimum {min_words})"
+        return False, f"article too short ({len(words)} visible words; minimum {min_words})"
 
     paragraphs = [p.strip() for p in body.split("\n\n") if p.strip() and not p.strip().startswith("#")]
     if len(paragraphs) < 3:
         return False, "article needs at least three substantive paragraphs"
 
+    # Catch the exact failure mode seen in the first quality-v2 batch: a fact
+    # stated twice in slightly different words. Use token-overlap instead of
+    # exact string equality so paraphrased duplicates are rejected too.
+    sentences = [
+        s.strip() for s in re.split(r"(?<=[.!?])\s+", visible_body)
+        if len(s.strip().split()) >= 7
+    ]
+    sentence_tokens = []
+    for sentence in sentences:
+        toks = {
+            t.lower()
+            for t in re.findall(r"[A-Za-zА-Яа-я0-9]+", sentence)
+            if len(t) > 2
+        }
+        sentence_tokens.append(toks)
+    for i in range(len(sentence_tokens)):
+        for j in range(i + 1, len(sentence_tokens)):
+            a, b = sentence_tokens[i], sentence_tokens[j]
+            if min(len(a), len(b)) < 6:
+                continue
+            overlap = len(a & b) / min(len(a), len(b))
+            if overlap >= 0.75:
+                return False, "article contains duplicated or near-duplicated sentences"
+
+    # Reject common model-generated speculation/filler. These patterns are
+    # deliberately narrow: sourced words such as "вероятно" may be legitimate,
+    # but phrases that invent a likely next step or causal explanation are not.
+    speculation_patterns = [
+        r"\bобикновено би\b",
+        r"\bобичайно би\b",
+        r"\bвероятно би\b",
+        r"\bобичайно се дължи\b",
+        r"\bследващата стъпка\b.{0,100}\bби\b",
+        r"\bдобавя тежест\b",
+        r"\bобяснява стойността\b",
+        r"\bпечелившата формула\b",
+    ]
+    lowered = visible_body.lower()
+    if any(re.search(pattern, lowered, flags=re.DOTALL) for pattern in speculation_patterns):
+        return False, "article contains editorial speculation or filler"
+
     # Numbers, dates, proper names and inline source links are imperfect but
     # useful proxies for factual density. Do not require a secondary link for
     # every story because some primary sources are already self-contained.
-    concrete_signals = len(re.findall(r"\b\d+[\d.,:%-]*\b", body))
+    concrete_signals = len(re.findall(r"\b\d+[\d.,:%-]*\b", visible_body))
     concrete_signals += len(re.findall(r"\[[^\]]{3,}\]\(https?://[^)]+\)", body))
     concrete_signals += sum(1 for f in (written.get("quick_facts") or []) if len(str(f).strip()) >= 8)
     if concrete_signals < 3:

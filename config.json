@@ -274,7 +274,7 @@
   "context_search": true,
   "web_search_max_uses": 1,
   "quality_version": 2,
-  "min_article_words": 300,
+  "min_article_words": 260,
   "max_new_per_run": 5,
   "window_hours": 30,
   "fonts": {
