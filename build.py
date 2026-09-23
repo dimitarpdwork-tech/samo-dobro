@@ -1774,7 +1774,7 @@ def build_daily_digest(site) -> None:
     sending is automated later."""
     cfg, ui = site.cfg, site.cfg["ui"]
     today = datetime.now(timezone.utc).date()
-    todays = [a for a in site.articles if a["_dt"].date() == today]
+    todays = [a for a in site.articles if a["_dt"].date() == today and not a.get("_thin_legacy")]
     digest_path = cfg.get("digest_path", "today")
     title = ui.get("digest_title", "Today's Good News")
 
@@ -2075,7 +2075,7 @@ def build_404(site) -> None:
 def build_feed(site) -> None:
     cfg = site.cfg
     items = ""
-    for a in site.articles[:30]:
+    for a in [x for x in site.articles if not x.get("_thin_legacy")][:30]:
         items += f"""<item>
 <title>{esc(a['headline'])}</title>
 <link>{site.abs_(site.article_path(a))}</link>
@@ -2402,7 +2402,9 @@ def main() -> None:
     build_llms_txt(site)
     write(DIST / "ads.txt", "google.com, pub-5837728291416240, DIRECT, f08c47fec0942fa0\n")
     write_og_jpeg_twins()
-    print(f"[{cfg['site_name']}] built {len(articles)} articles, "
+    thin_legacy = sum(1 for a in articles if a.get("_thin_legacy"))
+    print(f"[{cfg['site_name']}] built {len(articles)} article pages "
+          f"({thin_legacy} thin legacy page(s) preserved but de-emphasized/noindexed), "
           f"{len(cities)} city hub(s), {len(redirect_paths)} tag redirect(s) → {DIST}")
 
 
