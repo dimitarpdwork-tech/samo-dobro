@@ -93,7 +93,8 @@ def redraft_one(cfg: dict, path: Path, art: dict) -> str:
     }
     context_search = cfg.get("context_search", False)
     tools = (
-        [{"type": "web_search_20250305", "name": "web_search"}]
+        [{"type": "web_search_20250305", "name": "web_search",
+          "max_uses": int(cfg.get("web_search_max_uses", 1))}]
         if context_search else None
     )
     raw = pipeline.call_claude(
@@ -105,6 +106,10 @@ def redraft_one(cfg: dict, path: Path, art: dict) -> str:
     written = pipeline.parse_delimited_article(raw)
     if not written or not (written.get("body") or "").strip():
         return "rewrite failed to parse — left untouched"
+
+    quality_ok, quality_reason = pipeline.validate_written_article(cfg, written, full_text)
+    if not quality_ok:
+        return f"rewrite below quality floor ({quality_reason}) — left untouched"
 
     # Merge only the text. slug, id, published, publish_at, image_* and every
     # source_* field are deliberately preserved: the URL is already public and
@@ -132,6 +137,7 @@ def redraft_one(cfg: dict, path: Path, art: dict) -> str:
             c for c in (pipeline.clip(f, 120) for f in written["quick_facts"][:5]) if c
         ]
     art["full_source_extracted"] = True
+    art["quality_version"] = int(cfg.get("quality_version", 1))
     art["rewritten"] = datetime.now(timezone.utc).strftime(STAMP)
 
     save(path, art)
