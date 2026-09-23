@@ -148,7 +148,8 @@ def main() -> int:
 
     context_search = cfg.get("context_search", False)
     search_tools = (
-        [{"type": "web_search_20250305", "name": "web_search"}]
+        [{"type": "web_search_20250305", "name": "web_search",
+          "max_uses": int(cfg.get("web_search_max_uses", 1))}]
         if context_search
         else None
     )
@@ -205,21 +206,10 @@ def main() -> int:
         cand["_sensitive_topic"] = sensitive
         cand["_full_source_extracted"] = bool(full_text)
 
-        if sensitive and not full_text:
-            reason = "sensitive topic but full source extraction failed"
-            print(f"  [skip · safety] #{human_number} {cand.get('title','')[:60]}")
-            failed.append(
-                {"number": human_number, "title": cand.get("title", ""), "reason": reason}
-            )
-            continue
-
-        # Backstop for the same rule enforced at shortlist time. A queue built
-        # before that check existed, or a publisher that started blocking us
-        # between shortlisting and publishing, would otherwise still produce a
-        # snippet-thin article here.
-        if pipeline.requires_full_source(cand) and not full_text:
-            reason = "aggregator story but the publisher's page could not be read"
-            print(f"  [skip · thin source] #{human_number} {cand.get('title','')[:60]}")
+        if not full_text:
+            reason = "full primary source could not be extracted"
+            label = "safety" if sensitive else "source depth"
+            print(f"  [skip · {label}] #{human_number} {cand.get('title','')[:60]}")
             failed.append(
                 {"number": human_number, "title": cand.get("title", ""), "reason": reason}
             )
@@ -245,6 +235,19 @@ def main() -> int:
             print(f"  [skip · writing failed] #{human_number} {cand.get('title','')[:60]}")
             failed.append(
                 {"number": human_number, "title": cand.get("title", ""), "reason": reason}
+            )
+            continue
+
+        quality_ok, quality_reason = pipeline.validate_written_article(
+            cfg, written, full_text
+        )
+        if not quality_ok:
+            print(
+                f"  [skip · quality] #{human_number} "
+                f"{cand.get('title','')[:55]} — {quality_reason}"
+            )
+            failed.append(
+                {"number": human_number, "title": cand.get("title", ""), "reason": quality_reason}
             )
             continue
 
