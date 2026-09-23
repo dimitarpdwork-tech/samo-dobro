@@ -2493,7 +2493,7 @@ def rewrite_articles(cfg: dict, limit: int | None = None, force: bool = False) -
         pseudo = {"title": art.get("headline", ""), "source": art.get("source_name", ""),
                   "summary": art.get("summary_short", ""), "link": src_url}
         context_search = cfg.get("context_search", False)
-        search_tools = [{"type": "web_search_20250305", "name": "web_search"}] if context_search else None
+        search_tools = ([{"type": "web_search_20250305", "name": "web_search", "max_uses": int(cfg.get("web_search_max_uses", 1))}] if context_search else None)
         raw_response = call_claude(
             cfg, build_writing_prompt(cfg, pseudo, full_text, use_search=context_search),
             tools=search_tools, hard_fail=False)
