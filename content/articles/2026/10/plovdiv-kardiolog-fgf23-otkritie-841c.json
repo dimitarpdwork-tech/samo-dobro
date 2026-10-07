@@ -1,0 +1,37 @@
+{
+  "id": "841c6c53d177b773",
+  "slug": "plovdiv-kardiolog-fgf23-otkritie-841c",
+  "headline": "Пловдивски кардиолог с откритие, потвърдено от NIH и Harvard",
+  "meta_description": "Доц. Невена Иванова от Пловдив описа мутация през 2024 г. Екип на NIH и Harvard потвърди хипотезата ѝ в PNAS през 2026 г.",
+  "summary_short": "Мутация, описана от пловдивски кардиолог през 2024 г., е експериментално потвърдена от учени на NIH и Harvard в PNAS.",
+  "body": "Доц. д-р Невена Иванова, кардиолог в МБАЛ „Света Каридад“ в Пловдив, получи научно потвърждение на откритие, което описа за първи път през 2024 г. Американски изследователи от National Institutes of Health (NIH) и Harvard School of Dental Medicine експериментално доказаха хипотезата ѝ за генетичния вариант FGF23 c.202A>G (p.Thr68Ala), открит при пациент с рядко наследствено заболяване.\n\nПри първоначалното описание вариантът е класифициран като VUS – с неясно клинично значение. Доц. Иванова обаче посочва в публикацията си, че мутацията може да е патогенна, и подчертава нуждата от последващи функционални изследвания. Именно тази стъпка – от клинично наблюдение към лабораторен експеримент – е свързала работата ѝ с екипа отвъд океана.\n\nАмериканските учени използват система за генетично клониране, експресионни модели и протеомни методи, включително масспектрометрия, за да изследват варианти в гените FGF23 и GALNT3. Резултатите показват, че вариантът p.Thr68Ala нарушава стабилността и секрецията на белтъка FGF23, с което потвърждават първоначалната хипотеза на българския лекар. Изследването е публикувано в Proceedings of the National Academy of Sciences (PNAS) под заглавие „Mechanistic insights into mutations that cause diseases of phosphate dysregulation“, в [брой 32 на том 123 от 11 август 2026 г.](https://www.pnas.org/toc/pnas/123/32), с автори Liping Zhang, Alisa E. Lee, E Tian, Michael T. Collins, Kelly L. Roszko, Nadine L. Samara и Kelly G. Ten Hagen. Работата е подкрепена от Intramural Research Program на National Institute of Dental and Craniofacial Research и NIDCR Imaging Core.\n\nДоц. Иванова е единствен автор на клиничното описание на варианта. Тя е преминала допълнителна квалификация по генетика в Harvard Medical School, а през 2025 г. представя откритието си на годишната среща на American Society of Human Genetics в Бостън. Получава и покана за пълно членство в Sigma Xi – The Scientific Research Honor Society, организация, основана през 1886 г. в Cornell University, обединяваща учени от различни области въз основа на научните им постижения.\n\nСлучаят свързва клинично наблюдение от български кардиологичен кабинет с лабораторен екип в САЩ, работещ по механизмите на фосфатния метаболизъм при редки наследствени заболявания.",
+  "category": "nauka",
+  "tags": [
+    "Пловдив",
+    "наука",
+    "генетика",
+    "кардиология",
+    "медицина"
+  ],
+  "quick_facts": [
+    "Вариантът FGF23 c.202A>G (p.Thr68Ala) е описан през 2024 г. от доц. Невена Иванова, МБАЛ „Света Каридад“, Пловдив",
+    "Американското изследване е публикувано през август 2026 г. в PNAS, том 123, брой 32",
+    "Авторите включват Michael T. Collins и Kelly G. Ten Hagen от NIH",
+    "Доц. Иванова представя откритието си на ASHG 2025 в Бостън и получава покана за членство в Sigma Xi (осн. 1886 г., Corn…"
+  ],
+  "source_name": "Под Тепето",
+  "source_url": "https://podtepeto.com/novini/plovdivski-kardiolog-s-otkritie-potvardeno-ot-ucheni-ot-nih-i-harvard/",
+  "published": "2026-10-07T11:48:27Z",
+  "source_published": "2026-10-06T12:51:48Z",
+  "source_fetched_at": "2026-10-07T11:38:49Z",
+  "source_host": "podtepeto.com",
+  "expected_source_host": "podtepeto.com",
+  "full_source_extracted": true,
+  "sensitive_topic": true,
+  "quality_version": 2,
+  "lang": "bg",
+  "image_path": "/assets/articles/plovdiv-kardiolog-fgf23-otkritie-841c-e1e600b6.webp",
+  "image_credit": "AI-generated illustration",
+  "image_width": 1200,
+  "image_height": 672
+}
